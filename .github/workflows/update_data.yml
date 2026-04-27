@@ -24,7 +24,8 @@ jobs:
 
       - name: Run script
         env:
-          # 여기서 GitHub에 저장한 열쇠를 파이썬에게 전달합니다
+          # 금고(Secrets)에서 세 가지 열쇠를 모두 꺼내서 파이썬에게 줍니다
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          MOLIT_API_KEY: ${{ secrets.MOLIT_API_KEY }}
         run: python main.py auto
