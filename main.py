@@ -2,6 +2,7 @@ import requests, json, webbrowser, os
 import xml.etree.ElementTree as ET
 from urllib.parse import unquote
 from datetime import datetime, timedelta
+import sys
 
 # [환경 설정]
 # 직접 번호를 적지 않고, GitHub 금고(Secrets)에서 꺼내오도록 설정했습니다.
@@ -290,5 +291,9 @@ def create_html():
     webbrowser.open('file://' + os.path.realpath("index.html"))
 
 if __name__ == "__main__":
-    choice = input("1.업데이트  2.UI확인 : ")
-    fetch_data(3 if choice == "1" else 0)
+    # GitHub Actions에서는 "auto" 인자로 실행됨
+    if len(sys.argv) > 1 and sys.argv[1] == "auto":
+        fetch_data(3)
+    else:
+        choice = input("1.업데이트  2.UI확인 : ")
+        fetch_data(3 if choice == "1" else 0)
