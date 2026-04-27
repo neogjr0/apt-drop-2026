@@ -5,10 +5,10 @@ from datetime import datetime, timedelta
 
 # [환경 설정]
 # 직접 번호를 적지 않고, GitHub 금고(Secrets)에서 꺼내오도록 설정했습니다.
-MOLIT_API_KEY = os.environ.get("7b6efd99b84e03fca06677a5f9632db682bac3e47d90f5ec37f3b4947e84307e")
-SUPABASE_URL = os.environ.get("https://ofbtvvzpvuezfdirwhtd.supabase.co")
-SUPABASE_KEY = os.environ.get("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mYnR2dnpwdnVlemZkaXJ3aHRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMjY1MTYsImV4cCI6MjA5MjYwMjUxNn0.OLCpaSiQxs37dZC3P0QXxOTp4OKRYYApaF34b2UkOlA")
-
+# ✅ 올바른 코드 - 변수 이름(Secrets 키 이름)을 넣어야 함
+MOLIT_API_KEY = os.environ.get("MOLIT_API_KEY")
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 HEADERS = {
     "apikey": SUPABASE_KEY, 
