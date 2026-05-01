@@ -1,5 +1,4 @@
-
-    <!DOCTYPE html>
+<!DOCTYPE html>
     <html lang="ko">
     <head>
         <meta charset="UTF-8">
@@ -79,18 +78,29 @@
                     <button class="tab-btn up" onclick="setMode('up', this)">🔥 상승 시그널</button>
                 </div>
                 <table id="main-table">
-                    <thead><tr><th>계약일</th><th>지역/단지명</th><th>실거래가</th><th>변동액</th><th>액션</th></tr></thead>
+                    <thead><tr><th>거래일</th><th>지역/단지명</th><th>실거래가</th><th>변동액</th><th>액션</th></tr></thead>
                     <tbody id="list"></tbody>
                 </table>
             </div>
         </div>
         <script>
-            const client = supabase.createClient("https://ofbtvvzpvuezfdirwhtd.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mYnR2dnpwdnVlemZkaXJ3aHRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMjY1MTYsImV4cCI6MjA5MjYwMjUxNn0.OLCpaSiQxs37dZC3P0QXxOTp4OKRYYApaF34b2UkOlA");
+            const client = supabase.createClient(
+                "https://ofbtvvzpvuezfdirwhtd.supabase.co",
+                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mYnR2dnpwdnVlemZkaXJ3aHRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMjY1MTYsImV4cCI6MjA5MjYwMjUxNn0.OLCpaSiQxs37dZC3P0QXxOTp4OKRYYApaF34b2UkOlA"
+            );
             let rawData = []; let currentMode = 'down'; let filters = { period: 0, price: 0, loc: null }; let charts = {};
+
             async function init() {
-                const { data } = await client.from('drop_results').select('*').order('deal_date', {ascending: false});
-                rawData = data; render();
+                // listed_at 기준 정렬, drop_amount 있는 것만
+                const { data } = await client
+                    .from('drop_results')
+                    .select('*')
+                    .not('drop_amount', 'is', null)
+                    .order('listed_at', { ascending: false });
+                rawData = data || [];
+                render();
             }
+
             function setFilter(type, val, btn) {
                 filters[type] = val;
                 btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
@@ -106,60 +116,104 @@
                 document.getElementById('resetLoc').style.display = 'none';
                 render();
             }
+
             function getFilteredData() {
                 let filtered = rawData.filter(i => currentMode === 'up' ? i.drop_amount > 0 : i.drop_amount < 0);
-                if(filters.loc) { filtered = filtered.filter(i => i.loc_name === filters.loc); }
-                if(filters.period > 0) {
-                    const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth() - filters.period);
-                    filtered = filtered.filter(i => new Date(i.deal_date) >= cutoff);
+                if (filters.loc) filtered = filtered.filter(i => i.loc_name === filters.loc);
+                if (filters.period > 0) {
+                    const cutoff = new Date();
+                    cutoff.setMonth(cutoff.getMonth() - filters.period);
+                    // listed_at 기준으로 필터
+                    filtered = filtered.filter(i => i.listed_at && new Date(i.listed_at) >= cutoff);
                 }
-                if(filters.price > 0) { filtered = filtered.filter(i => Math.abs(i.drop_amount) >= filters.price); }
-                return filtered.sort((a,b) => currentMode === 'up' ? b.drop_amount - a.drop_amount : a.drop_amount - b.drop_amount);
+                if (filters.price > 0) filtered = filtered.filter(i => Math.abs(i.drop_amount) >= filters.price);
+                return filtered.sort((a, b) => currentMode === 'up' ? b.drop_amount - a.drop_amount : a.drop_amount - b.drop_amount);
             }
+
+            function fmtDate(val) {
+                if (!val) return '-';
+                return String(val).slice(0, 10);
+            }
+
             function render() {
                 const data = getFilteredData();
                 updateCharts(data);
                 const status = document.getElementById('filter-status');
-                if(filters.loc) { status.style.display = 'block'; status.innerText = `📍 ${filters.loc} 시그널만 표시 중`; }
+                if (filters.loc) { status.style.display = 'block'; status.innerText = `📍 ${filters.loc} 시그널만 표시 중`; }
                 else { status.style.display = 'none'; }
                 document.getElementById('list').innerHTML = data.map(i => `
                     <tr>
-                        <td style="color:#94a3b8; font-size:0.85rem;">${i.deal_date}</td>
+                        <td style="color:#94a3b8; font-size:0.85rem;">${fmtDate(i.listed_at)}</td>
                         <td>
                             <div style="font-size:0.75rem; color:#64748b;">${i.loc_name}</div>
-                            <div style="font-weight:bold; font-size:1rem; cursor:pointer;" onclick="window.open('https://search.naver.com/search.naver?query=${i.loc_name} ${i.apt_name}', '_blank')">${i.apt_name}</div>
+                            <div style="font-weight:bold; font-size:1rem; cursor:pointer;"
+                                 onclick="window.open('https://search.naver.com/search.naver?query=${encodeURIComponent(i.loc_name + ' ' + i.apt_name)}', '_blank')">
+                                ${i.apt_name}
+                            </div>
                         </td>
-                        <td class="price-tag">${(i.current_price/10000).toFixed(1)}억</td>
+                        <td class="price-tag">${(i.current_price / 10000).toFixed(1)}억</td>
                         <td class="price-tag ${currentMode === 'up' ? 'rise' : 'drop'}">
-                            ${currentMode === 'up' ? '▲' : '▼'} ${ (Math.abs(i.drop_amount)/10000).toFixed(1) }억
+                            ${currentMode === 'up' ? '▲' : '▼'} ${(Math.abs(i.drop_amount) / 10000).toFixed(1)}억
                         </td>
-                        <td><button class="btn-map" onclick="window.open('https://map.kakao.com/?q=${i.loc_name} ${i.apt_name}', '_blank')">MAP</button></td>
+                        <td><button class="btn-map"
+                            onclick="window.open('https://map.kakao.com/?q=${encodeURIComponent(i.loc_name + ' ' + i.apt_name)}', '_blank')">MAP</button></td>
                     </tr>
                 `).join('');
             }
+
             function downloadExcel() {
-                const data = getFilteredData().map(i => ({ "계약일": i.deal_date, "지역": i.loc_name, "단지명": i.apt_name, "실거래가(억)": (i.current_price/10000).toFixed(2), "변동액(억)": (i.drop_amount/10000).toFixed(2) }));
-                const worksheet = XLSX.utils.json_to_sheet(data);
-                const workbook = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(workbook, worksheet, "시그널_리스트");
-                XLSX.writeFile(workbook, `부동산_시그널_${currentMode}_${new Date().toISOString().slice(0,10)}.xlsx`);
+                const data = getFilteredData().map(i => ({
+                    "거래일": fmtDate(i.listed_at),
+                    "지역": i.loc_name,
+                    "단지명": i.apt_name,
+                    "실거래가(억)": (i.current_price / 10000).toFixed(2),
+                    "변동액(억)": (i.drop_amount / 10000).toFixed(2)
+                }));
+                const ws = XLSX.utils.json_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "시그널_리스트");
+                XLSX.writeFile(wb, `부동산_시그널_${currentMode}_${new Date().toISOString().slice(0,10)}.xlsx`);
             }
+
             function updateCharts(data) {
                 const ups = rawData.filter(i => i.drop_amount > 0).length;
                 const downs = rawData.filter(i => i.drop_amount < 0).length;
-                if(charts.ratio) charts.ratio.destroy();
-                charts.ratio = new Chart(document.getElementById('ratioChart'), { type: 'doughnut', data: { labels: ['상승', '하락'], datasets: [{ data: [ups, downs], backgroundColor: ['#ef4444', '#3b82f6'], borderWidth:0 }] }, options: { cutout: '75%' } });
-                const locCounts = {}; 
-                const displayData = rawData.filter(i => currentMode === 'up' ? i.drop_amount > 0 : i.drop_amount < 0);
-                displayData.forEach(i => locCounts[i.loc_name] = (locCounts[i.loc_name] || 0) + 1);
-                if(charts.loc) charts.loc.destroy();
-                charts.loc = new Chart(document.getElementById('locChart'), { type: 'bar', data: { labels: Object.keys(locCounts), datasets: [{ label: '시그널 건수', data: Object.values(locCounts), backgroundColor: '#1e293b', borderRadius:8 }] }, options: { onClick: (e, el) => { if (el.length > 0) { filters.loc = Object.keys(locCounts)[el[0].index]; document.getElementById('resetLoc').style.display = 'inline-block'; render(); } }, plugins: { legend: { display: false } } } });
-                const sorted = [...data].sort((a,b) => Math.abs(b.drop_amount) - Math.abs(a.drop_amount)).slice(0, 5);
-                if(charts.top) charts.top.destroy();
-                charts.top = new Chart(document.getElementById('topChart'), { type: 'bar', options: { indexAxis: 'y', plugins: { legend: { display: false } } }, data: { labels: sorted.map(i => i.apt_name.substring(0,6)), datasets: [{ label: '억', data: sorted.map(i => Math.abs(i.drop_amount)/10000), backgroundColor: '#64748b' }] } });
+                if (charts.ratio) charts.ratio.destroy();
+                charts.ratio = new Chart(document.getElementById('ratioChart'), {
+                    type: 'doughnut',
+                    data: { labels: ['상승', '하락'], datasets: [{ data: [ups, downs], backgroundColor: ['#ef4444', '#3b82f6'], borderWidth: 0 }] },
+                    options: { cutout: '75%' }
+                });
+                const locCounts = {};
+                rawData.filter(i => currentMode === 'up' ? i.drop_amount > 0 : i.drop_amount < 0)
+                       .forEach(i => locCounts[i.loc_name] = (locCounts[i.loc_name] || 0) + 1);
+                if (charts.loc) charts.loc.destroy();
+                charts.loc = new Chart(document.getElementById('locChart'), {
+                    type: 'bar',
+                    data: { labels: Object.keys(locCounts), datasets: [{ label: '시그널 건수', data: Object.values(locCounts), backgroundColor: '#1e293b', borderRadius: 8 }] },
+                    options: {
+                        onClick: (e, el) => {
+                            if (el.length > 0) {
+                                filters.loc = Object.keys(locCounts)[el[0].index];
+                                document.getElementById('resetLoc').style.display = 'inline-block';
+                                render();
+                            }
+                        },
+                        plugins: { legend: { display: false } }
+                    }
+                });
+                const sorted = [...data].sort((a, b) => Math.abs(b.drop_amount) - Math.abs(a.drop_amount)).slice(0, 5);
+                if (charts.top) charts.top.destroy();
+                charts.top = new Chart(document.getElementById('topChart'), {
+                    type: 'bar',
+                    options: { indexAxis: 'y', plugins: { legend: { display: false } } },
+                    data: {
+                        labels: sorted.map(i => i.apt_name.substring(0, 6)),
+                        datasets: [{ label: '억', data: sorted.map(i => Math.abs(i.drop_amount) / 10000), backgroundColor: '#64748b' }]
+                    }
+                });
             }
             init();
         </script>
     </body>
     </html>
-    
