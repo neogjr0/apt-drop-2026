@@ -147,15 +147,16 @@
             }
 
             function isDown(i) {
-                // 음수: 기존 폭락앱 하락
-                if (i.drop_amount < 0) return true;
-                // 양수 + trade_price 있음 + 현재가 < 기준가: collect.py 급매
-                if (i.drop_amount > 0 && i.trade_price != null && i.current_price < i.trade_price) return true;
-                return false;
+                // trade_price 있으면: 현재가 < 기준가 = 하락(급매)
+                if (i.trade_price != null && i.trade_price > 0) return i.current_price < i.trade_price;
+                // trade_price 없으면: 기존 폭락앱 방식 (음수 = 하락)
+                return i.drop_amount < 0;
             }
             function isUp(i) {
-                // 기존 폭락앱 상승: drop_amount > 0 이고 trade_price 없는 것
-                return i.drop_amount > 0 && (i.trade_price == null || i.trade_price === 0);
+                // trade_price 있으면: 현재가 > 기준가 = 상승
+                if (i.trade_price != null && i.trade_price > 0) return i.current_price > i.trade_price;
+                // trade_price 없으면: 기존 폭락앱 방식 (양수 = 상승)
+                return i.drop_amount > 0;
             }
             function getFilteredData() {
                 let filtered = rawData.filter(i => currentMode === 'up' ? isUp(i) : isDown(i));
