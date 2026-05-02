@@ -70,6 +70,19 @@
                     <canvas id="locChart"></canvas>
                 </div>
                 <div class="chart-card"><h3>🏆 변동 TOP 5</h3><canvas id="topChart"></canvas></div>
+                <!-- 추가 지표 행 -->
+                <div class="chart-card" style="grid-column: 1/-1;">
+                    <h3>📅 월별 폭락/폭등 건수 추이</h3>
+                    <canvas id="monthlyChart" height="80"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>📉 지역별 평균 낙폭률 (%)</h3>
+                    <canvas id="dropRateChart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>🗺 지역별 낙폭 강도 (평균 억)</h3>
+                    <canvas id="heatChart"></canvas>
+                </div>
             </div>
             <div class="list-panel">
                 <div id="filter-status" class="filter-info"></div>
@@ -202,7 +215,12 @@
                         plugins: { legend: { display: false } }
                     }
                 });
-                const sorted = [...data].sort((a, b) => Math.abs(b.drop_amount) - Math.abs(a.drop_amount)).slice(0, 5);
+                // 단지명 중복 제거 후 TOP10
+                const seen = new Set();
+                const sorted = [...data]
+                    .sort((a, b) => Math.abs(b.drop_amount) - Math.abs(a.drop_amount))
+                    .filter(i => { if (seen.has(i.apt_name)) return false; seen.add(i.apt_name); return true; })
+                    .slice(0, 10);
                 if (charts.top) charts.top.destroy();
                 charts.top = new Chart(document.getElementById('topChart'), {
                     type: 'bar',
@@ -211,6 +229,61 @@
                         labels: sorted.map(i => i.apt_name.substring(0, 6)),
                         datasets: [{ label: '억', data: sorted.map(i => Math.abs(i.drop_amount) / 10000), backgroundColor: '#64748b' }]
                     }
+                });
+
+                // 4. 월별 폭락/폭등 추이
+                const monthDown = {}, monthUp = {};
+                rawData.forEach(i => {
+                    const m = fmtDate(i.listed_at).slice(0,7);
+                    if (!m || m === '-') return;
+                    if (i.drop_amount < 0) monthDown[m] = (monthDown[m]||0) + 1;
+                    else monthUp[m] = (monthUp[m]||0) + 1;
+                });
+                const allMonths = [...new Set([...Object.keys(monthDown), ...Object.keys(monthUp)])].sort();
+                if (charts.monthly) charts.monthly.destroy();
+                charts.monthly = new Chart(document.getElementById('monthlyChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: allMonths,
+                        datasets: [
+                            { label: '📉 폭락', data: allMonths.map(m => monthDown[m]||0), backgroundColor: '#3b82f6', borderRadius: 4 },
+                            { label: '🔥 폭등', data: allMonths.map(m => monthUp[m]||0), backgroundColor: '#ef4444', borderRadius: 4 }
+                        ]
+                    },
+                    options: { plugins: { legend: { position: 'top' } }, scales: { x: { stacked: false }, y: { beginAtZero: true } } }
+                });
+
+                // 5. 지역별 평균 낙폭률
+                const locRate = {};
+                rawData.filter(i => i.drop_amount < 0 && i.current_price > 0).forEach(i => {
+                    if (!locRate[i.loc_name]) locRate[i.loc_name] = { sum: 0, cnt: 0 };
+                    locRate[i.loc_name].sum += Math.abs(i.drop_amount) / i.current_price * 100;
+                    locRate[i.loc_name].cnt++;
+                });
+                const locRateLabels = Object.keys(locRate).sort((a,b) => locRate[b].sum/locRate[b].cnt - locRate[a].sum/locRate[a].cnt);
+                const locRateData = locRateLabels.map(k => +(locRate[k].sum/locRate[k].cnt).toFixed(1));
+                if (charts.dropRate) charts.dropRate.destroy();
+                charts.dropRate = new Chart(document.getElementById('dropRateChart'), {
+                    type: 'bar',
+                    data: { labels: locRateLabels, datasets: [{ label: '평균 낙폭률(%)', data: locRateData, backgroundColor: locRateData.map(v => v > 15 ? '#ef4444' : v > 10 ? '#f97316' : '#3b82f6'), borderRadius: 6 }] },
+                    options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
+                });
+
+                // 6. 지역별 낙폭 강도 (평균 억)
+                const locAmt = {};
+                rawData.filter(i => i.drop_amount < 0).forEach(i => {
+                    if (!locAmt[i.loc_name]) locAmt[i.loc_name] = { sum: 0, cnt: 0 };
+                    locAmt[i.loc_name].sum += Math.abs(i.drop_amount);
+                    locAmt[i.loc_name].cnt++;
+                });
+                const locAmtLabels = Object.keys(locAmt).sort((a,b) => locAmt[b].sum/locAmt[b].cnt - locAmt[a].sum/locAmt[a].cnt);
+                const locAmtData = locAmtLabels.map(k => +(locAmt[k].sum/locAmt[k].cnt/10000).toFixed(1));
+                const maxAmt = Math.max(...locAmtData);
+                if (charts.heat) charts.heat.destroy();
+                charts.heat = new Chart(document.getElementById('heatChart'), {
+                    type: 'bar',
+                    data: { labels: locAmtLabels, datasets: [{ label: '평균 낙폭(억)', data: locAmtData, backgroundColor: locAmtData.map(v => `rgba(239,68,68,${(v/maxAmt*0.8+0.2).toFixed(2)})`), borderRadius: 6 }] },
+                    options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
                 });
             }
             init();
