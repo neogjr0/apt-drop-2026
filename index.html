@@ -69,7 +69,7 @@
                     <p style="font-size:0.95rem; color:#475569; margin-top:-10px; font-weight:500;">* 막대를 클릭하면 해당 지역만 필터링됩니다.</p>
                     <canvas id="locChart" height="60"></canvas>
                 </div>
-                <div class="chart-card"><h3>🏆 변동 TOP 5</h3><canvas id="topChart"></canvas></div>
+                <div class="chart-card"><h3>🏆 변동 TOP 10</h3><canvas id="topChart"></canvas></div>
                 <!-- 추가 지표 행 -->
                 <div class="chart-card" style="grid-column: 1/-1;">
                     <h3>📅 월별 폭락/폭등 건수 추이</h3>
@@ -104,13 +104,21 @@
             let rawData = []; let currentMode = 'down'; let filters = { period: 0, price: 0, loc: null }; let charts = {};
 
             async function init() {
-                // listed_at 기준 정렬, drop_amount 있는 것만
+                // 전체 데이터 로드 (최대 1000건)
                 const { data } = await client
                     .from('drop_results')
                     .select('*')
-                    .not('drop_amount', 'is', null)
-                    .order('listed_at', { ascending: false });
-                rawData = data || [];
+                    .order('listed_at', { ascending: false })
+                    .limit(1000);
+
+                // drop_amount 없으면 current_price - trade_price로 계산
+                rawData = (data || []).map(r => {
+                    if (r.drop_amount == null && r.trade_price && r.current_price) {
+                        r.drop_amount = r.current_price - r.trade_price;
+                    }
+                    return r;
+                }).filter(r => r.drop_amount != null && r.drop_amount !== 0);
+
                 render();
             }
 
@@ -137,7 +145,7 @@
                     const cutoff = new Date();
                     cutoff.setMonth(cutoff.getMonth() - filters.period);
                     // listed_at 기준으로 필터
-                    filtered = filtered.filter(i => i.listed_at && new Date(i.listed_at) >= cutoff);
+                    filtered = filtered.filter(i => getDate(i) && new Date(getDate(i)) >= cutoff);
                 }
                 if (filters.price > 0) filtered = filtered.filter(i => Math.abs(i.drop_amount) >= filters.price);
                 return filtered.sort((a, b) => currentMode === 'up' ? b.drop_amount - a.drop_amount : a.drop_amount - b.drop_amount);
@@ -146,6 +154,9 @@
             function fmtDate(val) {
                 if (!val) return '-';
                 return String(val).slice(0, 10);
+            }
+            function getDate(row) {
+                return row.listed_at || row.deal_date || null;
             }
 
             function render() {
@@ -156,7 +167,7 @@
                 else { status.style.display = 'none'; }
                 document.getElementById('list').innerHTML = data.map(i => `
                     <tr>
-                        <td style="color:#94a3b8; font-size:0.85rem;">${fmtDate(i.listed_at)}</td>
+                        <td style="color:#94a3b8; font-size:0.85rem;">${fmtDate(getDate(i))}</td>
                         <td>
                             <div style="font-size:0.75rem; color:#64748b;">${i.loc_name}</div>
                             <div style="font-weight:bold; font-size:1rem; cursor:pointer;"
@@ -176,7 +187,7 @@
 
             function downloadExcel() {
                 const data = getFilteredData().map(i => ({
-                    "거래일": fmtDate(i.listed_at),
+                    "거래일": fmtDate(getDate(i)),
                     "지역": i.loc_name,
                     "단지명": i.apt_name,
                     "실거래가(억)": (i.current_price / 10000).toFixed(2),
