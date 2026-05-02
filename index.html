@@ -228,7 +228,7 @@
                     options: { cutout: '75%' }
                 });
                 const locCounts = {};
-                rawData.filter(i => currentMode === 'up' ? i.drop_amount > 0 : i.drop_amount < 0)
+                rawData.filter(i => currentMode === 'up' ? isUp(i) : isDown(i))
                        .forEach(i => locCounts[i.loc_name] = (locCounts[i.loc_name] || 0) + 1);
                 if (charts.loc) charts.loc.destroy();
                 charts.loc = new Chart(document.getElementById('locChart'), {
@@ -279,8 +279,8 @@
                 rawData.forEach(i => {
                     const m = fmtDate(i.listed_at).slice(0,7);
                     if (!m || m === '-') return;
-                    if (i.drop_amount < 0) monthDown[m] = (monthDown[m]||0) + 1;
-                    else monthUp[m] = (monthUp[m]||0) + 1;
+                    if (isDown(i)) monthDown[m] = (monthDown[m]||0) + 1;
+                    else if (isUp(i)) monthUp[m] = (monthUp[m]||0) + 1;
                 });
                 const allMonths = [...new Set([...Object.keys(monthDown), ...Object.keys(monthUp)])].sort();
                 if (charts.monthly) charts.monthly.destroy();
@@ -298,7 +298,7 @@
 
                 // 5. 지역별 평균 낙폭률
                 const locRate = {};
-                rawData.filter(i => i.drop_amount < 0 && i.current_price > 0).forEach(i => {
+                rawData.filter(i => isDown(i) && i.current_price > 0).forEach(i => {
                     if (!locRate[i.loc_name]) locRate[i.loc_name] = { sum: 0, cnt: 0 };
                     locRate[i.loc_name].sum += Math.abs(i.drop_amount) / i.current_price * 100;
                     locRate[i.loc_name].cnt++;
@@ -314,7 +314,7 @@
 
                 // 6. 지역별 낙폭 강도 (평균 억)
                 const locAmt = {};
-                rawData.filter(i => i.drop_amount < 0).forEach(i => {
+                rawData.filter(i => isDown(i)).forEach(i => {
                     if (!locAmt[i.loc_name]) locAmt[i.loc_name] = { sum: 0, cnt: 0 };
                     locAmt[i.loc_name].sum += Math.abs(i.drop_amount);
                     locAmt[i.loc_name].cnt++;
