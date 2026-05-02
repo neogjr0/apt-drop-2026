@@ -1,826 +1,335 @@
 <!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>부동산 급매 관리자 - AI 파싱 & 서울 전지역 시각화</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
-    <style>
-        :root {
-            --bg-primary: #ffffff; --bg-secondary: #f8f9fa; --bg-tertiary: #f1f3f5;
-            --bg-danger: #fff5f5; --text-primary: #212529; --text-secondary: #495057;
-            --text-tertiary: #868e96; --text-danger: #e03131;
-            --border-primary: #dee2e6; --border-secondary: #ced4da; --border-tertiary: #e9ecef;
-            --r-sm: 4px; --r-md: 8px; --r-lg: 12px;
-            --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-            --blue: #378ADD;
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: var(--font); background: #f1f3f5; display: flex; align-items: flex-start; justify-content: center; min-height: 100vh; color: var(--text-primary); padding: 16px; }
-
-        .shell { display: grid; grid-template-columns: 260px 1fr; grid-template-rows: 52px 1fr; width: 100%; max-width: 1400px; min-height: 850px; border: 0.5px solid var(--border-tertiary); border-radius: var(--r-lg); overflow: hidden; background: var(--bg-primary); box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
-
-        .topbar { grid-column: 1/-1; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 0.5px solid var(--border-tertiary); background: var(--bg-primary); z-index: 10; }
-        .topbar-title { font-size: 15px; font-weight: 600; }
-        .topbar-badge { font-size: 11px; padding: 3px 10px; border-radius: 20px; background: var(--bg-danger); color: var(--text-danger); margin-left: 8px; font-weight: 700; }
-        .btn-parse { font-size: 12px; padding: 8px 16px; border-radius: var(--r-md); border: none; background: var(--blue); color: #fff; cursor: pointer; font-weight: 500; }
-        .btn-parse:hover { background: #2c6eb1; }
-
-        .sidebar { border-right: 0.5px solid var(--border-tertiary); overflow-y: auto; background: var(--bg-secondary); display: flex; flex-direction: column; }
-        .sidebar-section { padding: 18px 14px 8px; font-size: 11px; font-weight: 700; color: var(--text-tertiary); letter-spacing: 0.05em; text-transform: uppercase; flex-shrink: 0; }
-        .filter-list { overflow-y: auto; }
-        .filter-item { display: flex; align-items: center; justify-content: space-between; padding: 7px 14px; font-size: 12.5px; color: var(--text-secondary); cursor: pointer; border-radius: 6px; margin: 1px 10px; transition: all 0.15s; }
-        .filter-item:hover, .filter-item.active { background: var(--bg-primary); color: var(--text-primary); font-weight: 500; }
-        .filter-count { font-size: 10px; padding: 2px 6px; border-radius: 20px; background: var(--bg-tertiary); min-width: 20px; text-align: center; }
-        .active .filter-count { background: #378ADD20; color: #185FA5; }
-
-        .main { display: grid; grid-template-rows: auto auto 1fr; overflow: hidden; }
-
-        .dashboard-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 15px; padding: 15px; background: var(--bg-secondary); border-bottom: 0.5px solid var(--border-tertiary); }
-        .stat-widget { background: #fff; padding: 15px; border-radius: var(--r-md); border: 0.5px solid var(--border-tertiary); }
-        .widget-label { font-size: 11px; color: var(--text-tertiary); font-weight: 600; margin-bottom: 10px; display: flex; justify-content: space-between; }
-        .widget-val { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
-        .mini-chart-bar { height: 6px; background: var(--bg-tertiary); border-radius: 3px; overflow: hidden; }
-        .chart-fill { height: 100%; transition: width 0.5s; }
-        .chart-diff { font-size: 10px; font-weight: 700; margin-left: 4px; }
-        .up { color: #E24B4A; } .down { color: #378ADD; }
-
-        .toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 0.5px solid var(--border-tertiary); background: #fff; }
-        .tab { font-size: 13px; padding: 6px 14px; border-radius: var(--r-md); color: var(--text-secondary); cursor: pointer; border: none; background: transparent; font-weight: 500; }
-        .tab.active { background: var(--bg-tertiary); color: var(--text-primary); }
-
-        .content-area { display: grid; grid-template-columns: 1fr 380px; overflow: hidden; }
-
-        /* ── 탭 패널 ── */
-        .tab-panel { display: none; }
-        .tab-panel.active { display: contents; }
-
-        /* 전체 리스트 뷰 */
-        .full-list-view { grid-column: 1/-1; overflow-y: auto; padding: 16px; background: var(--bg-secondary); }
-        .full-list-table { width: 100%; border-collapse: collapse; font-size: 13px; background: #fff; border-radius: var(--r-md); overflow: hidden; border: 0.5px solid var(--border-tertiary); }
-        .full-list-table th { padding: 10px 14px; background: var(--bg-tertiary); color: var(--text-secondary); font-weight: 600; font-size: 11px; text-align: left; border-bottom: 0.5px solid var(--border-tertiary); }
-        .full-list-table td { padding: 11px 14px; border-bottom: 0.5px solid var(--border-tertiary); color: var(--text-primary); }
-        .full-list-table tr:last-child td { border-bottom: none; }
-        .full-list-table tr:hover td { background: var(--bg-secondary); }
-        .badge-urgent { font-size: 10px; padding: 2px 7px; border-radius: 4px; font-weight: 700; background: #fff5f5; color: #e03131; }
-        .badge-normal { font-size: 10px; padding: 2px 7px; border-radius: 4px; font-weight: 700; background: #f1f3f5; color: #495057; }
-
-        /* 실거래가 비교 뷰 */
-        .compare-view { grid-column: 1/-1; overflow-y: auto; padding: 16px; background: var(--bg-secondary); }
-        .compare-card { background: #fff; border: 0.5px solid var(--border-tertiary); border-radius: var(--r-md); padding: 16px; margin-bottom: 12px; }
-        .compare-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-        .compare-name { font-size: 14px; font-weight: 600; }
-        .compare-bar-wrap { display: grid; grid-template-columns: 80px 1fr 70px; align-items: center; gap: 10px; margin-bottom: 6px; }
-        .compare-label { font-size: 11px; color: var(--text-tertiary); font-weight: 600; }
-        .bar-track { height: 10px; background: var(--bg-tertiary); border-radius: 5px; overflow: hidden; position: relative; }
-        .bar-fill-price { height: 100%; background: var(--blue); border-radius: 5px; transition: width 0.5s; }
-        .bar-fill-real { height: 100%; background: #868e96; border-radius: 5px; transition: width 0.5s; }
-        .compare-val { font-size: 12px; font-weight: 700; text-align: right; }
-        .gap-tag { font-size: 13px; font-weight: 700; }
-        .gap-down { color: #e03131; }
-        .gap-up { color: #378ADD; }
-
-        .map-pane { position: relative; }
-        #leaflet-map { width: 100%; height: 100%; }
-        .map-status { position: absolute; top: 10px; left: 50px; z-index: 1000; background: rgba(255,255,255,0.95); padding: 5px 12px; border-radius: 20px; font-size: 11px; font-weight: 600; color: var(--text-secondary); box-shadow: 0 2px 8px rgba(0,0,0,0.12); display: flex; align-items: center; gap: 6px; }
-        .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #37b24d; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-
-        .list-pane { overflow-y: auto; padding: 15px; background: var(--bg-secondary); border-left: 0.5px solid var(--border-tertiary); }
-        .listing-card { background: #fff; border: 0.5px solid var(--border-tertiary); border-radius: var(--r-md); padding: 14px; margin-bottom: 10px; cursor: pointer; transition: all 0.15s; }
-        .listing-card:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,0.06); }
-        .listing-card.selected { border-color: var(--blue); border-width: 1.5px; box-shadow: 0 0 0 3px #378ADD18; }
-        .card-price { font-size: 16px; font-weight: 700; margin: 4px 0; }
-        .card-meta { font-size: 11px; color: var(--text-tertiary); display: flex; gap: 8px; flex-wrap: wrap; }
-
-        .parse-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(3px); z-index: 9999; align-items: center; justify-content: center; }
-        .parse-modal.open { display: flex; }
-        .modal-card { background: #fff; border-radius: var(--r-lg); padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
-        .form-label { display:block; font-size:11px; font-weight:600; color:var(--text-tertiary); margin-bottom:5px; }
-        .form-input { width:100%; padding:8px 10px; border:1px solid var(--border-secondary); border-radius:var(--r-md); font-size:13px; font-family:var(--font); outline:none; background:#fff; }
-        .form-input:focus { border-color:var(--blue); box-shadow:0 0 0 3px #378ADD18; }
-
-        .pm { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.25); cursor: pointer; border: 2px solid rgba(255,255,255,0.85); }
-        .pm-urgent { background: #E24B4A; color: #fff; }
-        .pm-normal { background: #378ADD; color: #fff; }
-
-        .spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid #ddd; border-top-color: var(--blue); border-radius: 50%; animation: spin 0.7s linear infinite; margin-right: 6px; vertical-align: middle; }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
-    
-        /* ── 반응형 ── */
-        @media (max-width: 1100px) {
-            .shell { grid-template-columns: 200px 1fr; }
-        }
-        @media (max-width: 800px) {
-            body { padding: 0; }
-            .shell { grid-template-columns: 1fr; grid-template-rows: 52px auto auto 1fr; border-radius: 0; min-height: 100vh; }
-            .topbar { grid-column: 1; }
-            .sidebar { grid-column: 1; border-right: none; border-bottom: 0.5px solid var(--border-tertiary); flex-direction: row; flex-wrap: wrap; padding: 8px; gap: 4px; overflow-x: auto; max-height: 120px; }
-            .sidebar-section { display: none; }
-            .filter-item { margin: 0; padding: 4px 8px; font-size: 11px; }
-            .main { grid-column: 1; }
-            .dashboard-stats { grid-template-columns: repeat(2, 1fr); padding: 10px; gap: 8px; }
-            .content-area { grid-template-columns: 1fr !important; }
-            .list-pane { border-left: none; border-top: 0.5px solid var(--border-tertiary); max-height: 300px; }
-            #leaflet-map { min-height: 300px; }
-            .topbar-title { font-size: 13px; }
-            .btn-parse { font-size: 11px; padding: 6px 10px; }
-        }
-        @media (max-width: 480px) {
-            .dashboard-stats { grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px; }
-            .widget-val { font-size: 15px; }
-            .toolbar { padding: 6px 10px; gap: 4px; overflow-x: auto; }
-            .tab { font-size: 11px; padding: 5px 8px; white-space: nowrap; }
-        }
+    <html lang="ko">
+    <head>
+        <meta charset="UTF-8">
+        <title>부동산 폭등 폭락 시그널 추적기</title>
+        <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+        <style>
+            :root { --blue: #3b82f6; --red: #ef4444; --dark: #0f172a; --gray: #f8fafc; }
+            body { font-family: 'Pretendard', -apple-system, sans-serif; background: var(--gray); margin: 0; padding: 20px; color: var(--dark); }
+            .container { max-width: 1200px; margin: 0 auto; }
+            .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+            .download-group { display: flex; gap: 10px; }
+            .btn-download { background: #10b981; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 0.9rem; transition: 0.2s; }
+            .btn-download:hover { background: #059669; }
+            .filter-panel { background: white; padding: 20px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 25px; display: flex; gap: 40px; }
+            .btn-group button { background: #f1f5f9; border: none; padding: 10px 18px; border-radius: 12px; cursor: pointer; font-weight: 600; font-size: 0.85rem; transition: 0.2s; }
+            .btn-group button.active { background: var(--dark); color: white; }
+            .chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; margin-bottom: 30px; }
+            .chart-card { background: white; padding: 25px; border-radius: 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); position: relative; min-height: 280px; }
+            .chart-card h3 { margin-top: 0; display: flex; justify-content: space-between; align-items: center; }
+            .reset-loc { font-size: 0.7rem; color: var(--blue); cursor: pointer; border: 1px solid var(--blue); padding: 2px 8px; border-radius: 4px; display: none; }
+            .list-panel { background: white; padding: 30px; border-radius: 28px; box-shadow: 0 10px 40px rgba(0,0,0,0.03); }
+            .tabs { display: flex; gap: 20px; margin-bottom: 25px; border-bottom: 2px solid #f1f5f9; }
+            .tab-btn { font-size: 1.4rem; border: none; background: none; cursor: pointer; color: #cbd5e1; font-weight: 800; padding-bottom: 15px; }
+            .tab-btn.active.down { color: var(--blue); border-bottom: 4px solid var(--blue); }
+            .tab-btn.active.up { color: var(--red); border-bottom: 4px solid var(--red); }
+            table { width: 100%; border-collapse: collapse; }
+            th { text-align: left; padding: 15px; color: #94a3b8; font-size: 0.85rem; }
+            td { padding: 20px 15px; border-bottom: 1px solid #f8fafc; }
+            .price-tag { font-weight: 800; font-size: 1.1rem; }
+            .drop { color: var(--blue); }
+            .rise { color: var(--red); }
+            .btn-map { background: #fee500; border: none; padding: 8px 15px; border-radius: 10px; font-weight: bold; cursor: pointer; }
+            .filter-info { background: #e0f2fe; color: #0369a1; padding: 10px 20px; border-radius: 10px; margin-bottom: 15px; display: none; font-weight: bold; }
         </style>
-</head>
-<body>
-<h1 class="sr-only">서울 부동산 급매 통합 관리 대시보드</h1>
-
-<div class="shell">
-    <div class="topbar">
-        <div style="display:flex;align-items:center">
-            <span class="topbar-title">🏢 서울 급매 통합 대시보드</span>
-            <span class="topbar-badge">25개구 LIVE</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:15px">
-            <span style="font-size:12px;color:var(--text-tertiary);" id="last-update">업데이트 중...</span>
-            <button style="font-size:12px;padding:8px 14px;border-radius:var(--r-md);border:0.5px solid var(--border-secondary);background:none;cursor:pointer;color:var(--text-secondary);" onclick="loadListings()">↻ 국토부 새로고침</button>
-            <button class="btn-parse" onclick="openModal()">+ 새 매물 등록</button>
-        </div>
-    </div>
-
-    <aside class="sidebar">
-        <div class="sidebar-section">서울 자치구 (25)</div>
-        <div class="filter-list" id="district-list"></div>
-        <div class="sidebar-section" style="border-top:0.5px solid var(--border-tertiary);margin-top:8px;">매물 유형</div>
-        <div class="filter-item active" data-type="전체">전체 유형 <span class="filter-count" id="count-all">0</span></div>
-        <div class="filter-item" data-type="아파트">아파트 <span class="filter-count" id="count-apt">0</span></div>
-        <div class="filter-item" data-type="오피스텔">오피스텔 <span class="filter-count" id="count-opi">0</span></div>
-        <div class="filter-item" data-type="빌라">빌라/연립 <span class="filter-count" id="count-villa">0</span></div>
-    </aside>
-
-    <main class="main">
-        <section class="dashboard-stats">
-            <div class="stat-widget">
-                <div class="widget-label">매수우위 지수 <span>보합</span></div>
-                <div class="widget-val">24.8 <span class="chart-diff down">▼ 0.2</span></div>
-                <div class="mini-chart-bar"><div class="chart-fill" style="width:25%;background:#868e96"></div></div>
-            </div>
-            <div class="stat-widget">
-                <div class="widget-label">서울 평균 평단가 <span>상승</span></div>
-                <div class="widget-val">4,215 <span style="font-size:12px;font-weight:400">만</span> <span class="chart-diff up">▲ 1.4%</span></div>
-                <div class="mini-chart-bar"><div class="chart-fill" style="width:78%;background:#E24B4A"></div></div>
-            </div>
-            <div class="stat-widget">
-                <div class="widget-label">급매 건수</div>
-                <div class="widget-val" id="stat-urgent">0 <span style="font-size:12px;font-weight:400">건</span></div>
-                <div class="mini-chart-bar"><div class="chart-fill" id="stat-urgent-bar" style="width:0%;background:var(--blue)"></div></div>
-            </div>
-            <div class="stat-widget">
-                <div class="widget-label">실거래가 괴리율 <span>평균</span></div>
-                <div class="widget-val" id="stat-gap">- <span style="font-size:12px;font-weight:400">%</span></div>
-                <div class="mini-chart-bar"><div class="chart-fill" id="stat-gap-bar" style="width:0%;background:#639922"></div></div>
-            </div>
-        </section>
-
-        <div class="toolbar">
-            <button class="tab active" data-tab="map">지도 기반 분석</button>
-            <button class="tab" data-tab="list">전체 리스트</button>
-            <button class="tab" data-tab="compare">실거래가 비교</button>
-            <button class="tab" data-tab="chart">📊 분석</button>
-            <select id="sort-select" style="margin-left:auto;font-size:12px;padding:4px 8px;border-radius:4px;border:0.5px solid var(--border-secondary);" onchange="renderAll()">
-                <option value="gap">하락률 높은순</option>
-                <option value="date">최신 등록순</option>
-                <option value="price">가격 낮은순</option>
-            </select>
-        </div>
-
-        <div class="content-area" id="content-area">
-            <!-- 탭 0: 지도 기반 분석 (기본) -->
-            <div class="tab-panel active" id="panel-map" style="display:contents;">
-                <section class="map-pane">
-                    <div id="leaflet-map"></div>
-                    <div class="map-status">
-                        <div class="status-dot"></div>
-                        <span id="map-status-text">지도 로딩 중...</span>
-                    </div>
-                </section>
-                <section class="list-pane">
-                    <div id="listing-container">
-                        <div style="text-align:center;padding:40px;color:var(--text-tertiary);font-size:13px;">
-                            <div class="spinner"></div> 매물 데이터 로딩 중...
-                        </div>
-                    </div>
-                </section>
-            </div>
-
-            <!-- 탭 1: 전체 리스트 -->
-            <div class="tab-panel" id="panel-list" style="display:none;">
-                <div class="full-list-view">
-                    <table class="full-list-table">
-                        <thead>
-                            <tr>
-                                <th>단지명</th>
-                                <th>자치구</th>
-                                <th>유형</th>
-                                <th>면적</th>
-                                <th>층수</th>
-                                <th>매물가</th>
-                                <th>실거래가</th>
-                                <th>괴리율</th>
-                                <th>등록일</th>
-                            </tr>
-                        </thead>
-                        <tbody id="full-list-body"></tbody>
-                    </table>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1 style="font-size: 1.8rem; letter-spacing: -1px;">📡 부동산 폭등 폭락 시그널 <span style="color:#64748b; font-weight:400;">양극단 추적기</span></h1>
+                <div class="download-group">
+                    <button class="btn-download" onclick="downloadExcel()">📊 Excel 시트 저장</button>
                 </div>
             </div>
-
-            <!-- 탭 2: 실거래가 비교 -->
-            <div class="tab-panel" id="panel-compare" style="display:none;">
-                <div class="compare-view" id="compare-container"></div>
-            
-            <!-- 탭 3: 분석 -->
-            <div class="tab-panel" id="panel-chart" style="display:none;overflow-y:auto;padding:20px;background:var(--bg-secondary);grid-column:1/-1;">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
-                    <div style="background:#fff;border-radius:var(--r-md);border:0.5px solid var(--border-tertiary);padding:18px;">
-                        <div style="font-size:13px;font-weight:700;margin-bottom:14px;">📍 구별 급매 건수</div>
-                        <canvas id="chart-gu" height="220"></canvas>
-                    </div>
-                    <div style="background:#fff;border-radius:var(--r-md);border:0.5px solid var(--border-tertiary);padding:18px;">
-                        <div style="font-size:13px;font-weight:700;margin-bottom:14px;">📈 월별 실거래가 추이 (평균)</div>
-                        <canvas id="chart-monthly" height="220"></canvas>
-                    </div>
-                    <div style="background:#fff;border-radius:var(--r-md);border:0.5px solid var(--border-tertiary);padding:18px;">
-                        <div style="font-size:13px;font-weight:700;margin-bottom:14px;">📐 평형별 평균 거래가 (억)</div>
-                        <canvas id="chart-area" height="220"></canvas>
-                    </div>
-                    <div style="background:#fff;border-radius:var(--r-md);border:0.5px solid var(--border-tertiary);padding:18px;">
-                        <div style="font-size:13px;font-weight:700;margin-bottom:14px;">🎯 급매 점수 분포</div>
-                        <canvas id="chart-score" height="220"></canvas>
+            <div class="filter-panel">
+                <div class="filter-group"><label style="display:block; font-size:0.8rem; font-weight:bold; color:#64748b; margin-bottom:10px;">📅 거래 기간</label>
+                    <div class="btn-group">
+                        <button class="active" onclick="setFilter('period', 0, this)">전체</button>
+                        <button onclick="setFilter('period', 6, this)">6개월</button>
+                        <button onclick="setFilter('period', 12, this)">1년</button>
+                        <button onclick="setFilter('period', 24, this)">2년</button>
                     </div>
                 </div>
-                <div style="margin-top:16px;background:#fff;border-radius:var(--r-md);border:0.5px solid var(--border-tertiary);padding:18px;">
-                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                        <span style="font-size:13px;font-weight:700;">🔥 급매 히트맵</span>
-                        <button onclick="toggleHeatmap()" id="heatmap-btn" style="font-size:12px;padding:6px 14px;border-radius:var(--r-md);border:0.5px solid var(--border-secondary);background:none;cursor:pointer;">지도 탭에 표시</button>
+                <div class="filter-group"><label style="display:block; font-size:0.8rem; font-weight:bold; color:#64748b; margin-bottom:10px;">💰 변동 금액</label>
+                    <div class="btn-group">
+                        <button class="active" onclick="setFilter('price', 0, this)">전체</button>
+                        <button onclick="setFilter('price', 10000, this)">1억↑</button>
+                        <button onclick="setFilter('price', 30000, this)">3억↑</button>
+                        <button onclick="setFilter('price', 50000, this)">5억↑</button>
                     </div>
-                    <p style="font-size:12px;color:var(--text-tertiary);">히트맵 활성화 후 지도 탭으로 이동하면 급매 밀집 지역이 표시됩니다.</p>
                 </div>
             </div>
-        </div>
-    </main>
-</div>
-
-<div class="parse-modal" id="parse-modal">
-    <div class="modal-card" style="width:520px;">
-        <div style="font-weight:700;font-size:16px;margin-bottom:16px;">📋 새 매물 등록</div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div style="grid-column:1/-1;">
-                <label class="form-label">단지명 *</label>
-                <input class="form-input" id="f-name" placeholder="예: 강남구 역삼동 푸르지오">
+            <div class="chart-grid">
+                <div class="chart-card"><h3>📈 시장 심리</h3><canvas id="ratioChart"></canvas></div>
+                <div class="chart-card" style="grid-column:1/-1; min-height:360px;">
+                    <h3>📍 지역별 빈도 <span id="resetLoc" class="reset-loc" onclick="resetLocFilter()">해제</span></h3>
+                    <p style="font-size:0.95rem; color:#475569; margin-top:-10px; font-weight:500;">* 막대를 클릭하면 해당 지역만 필터링됩니다.</p>
+                    <canvas id="locChart" height="120"></canvas>
+                </div>
+                <div class="chart-card"><h3>🏆 변동 TOP 10</h3><canvas id="topChart"></canvas></div>
+                <!-- 추가 지표 행 -->
+                <div class="chart-card" style="grid-column: 1/-1;">
+                    <h3>📅 월별 폭락/폭등 건수 추이</h3>
+                    <canvas id="monthlyChart" height="80"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>📉 지역별 평균 낙폭률 (%)</h3>
+                    <canvas id="dropRateChart"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>🗺 지역별 낙폭 강도 (평균 억)</h3>
+                    <canvas id="heatChart"></canvas>
+                </div>
             </div>
-            <div>
-                <label class="form-label">자치구 *</label>
-                <select class="form-input" id="f-district">
-                    <option value="">선택</option>
-                </select>
-            </div>
-            <div>
-                <label class="form-label">유형</label>
-                <select class="form-input" id="f-type">
-                    <option value="아파트">아파트</option>
-                    <option value="오피스텔">오피스텔</option>
-                    <option value="빌라">빌라/연립</option>
-                </select>
-            </div>
-            <div>
-                <label class="form-label">매물가 (만원) *</label>
-                <input class="form-input" id="f-price" type="number" placeholder="예: 155000">
-            </div>
-            <div>
-                <label class="form-label">최근 실거래가 (만원)</label>
-                <input class="form-input" id="f-real" type="number" placeholder="예: 182000">
-            </div>
-            <div>
-                <label class="form-label">전용면적 (㎡)</label>
-                <input class="form-input" id="f-area" type="number" placeholder="예: 84">
-            </div>
-            <div>
-                <label class="form-label">층수</label>
-                <input class="form-input" id="f-floor" type="number" placeholder="예: 12">
+            <div class="list-panel">
+                <div id="filter-status" class="filter-info"></div>
+                <div class="tabs">
+                    <button class="tab-btn active down" onclick="setMode('down', this)">📉 하락 시그널</button>
+                    <button class="tab-btn up" onclick="setMode('up', this)">🔥 상승 시그널</button>
+                </div>
+                <table id="main-table">
+                    <thead><tr><th>거래일</th><th>지역/단지명</th><th>실거래가</th><th>변동액</th><th>액션</th></tr></thead>
+                    <tbody id="list"></tbody>
+                </table>
             </div>
         </div>
+        <script>
+            const client = supabase.createClient(
+                "https://ofbtvvzpvuezfdirwhtd.supabase.co",
+                "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mYnR2dnpwdnVlemZkaXJ3aHRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMjY1MTYsImV4cCI6MjA5MjYwMjUxNn0.OLCpaSiQxs37dZC3P0QXxOTp4OKRYYApaF34b2UkOlA"
+            );
+            let rawData = []; let currentMode = 'down'; let filters = { period: 0, price: 0, loc: null }; let charts = {};
 
-        <div id="form-error" style="display:none;margin-top:10px;font-size:12px;color:#e03131;padding:8px 12px;background:#fff5f5;border-radius:6px;"></div>
+            async function init() {
+                // 페이지네이션으로 전체 데이터 로드
+                let all = [];
+                let page = 0;
+                const PAGE = 1000;
+                while (true) {
+                    const { data, error } = await client
+                        .from('drop_results')
+                        .select('*')
+                        .order('listed_at', { ascending: false })
+                        .range(page * PAGE, (page + 1) * PAGE - 1);
+                    if (error || !data || data.length === 0) break;
+                    all = all.concat(data);
+                    if (data.length < PAGE) break;
+                    page++;
+                }
+                // drop_amount 없으면 current_price - trade_price로 계산
+                rawData = all.map(r => {
+                    if (r.drop_amount == null && r.trade_price && r.current_price) {
+                        r.drop_amount = r.current_price - r.trade_price;
+                    }
+                    return r;
+                }).filter(r => r.drop_amount != null && r.drop_amount !== 0);
 
-        <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end;">
-            <button style="padding:8px 18px;border-radius:6px;border:1px solid #ccc;background:none;cursor:pointer;font-size:13px;" onclick="closeModal()">취소</button>
-            <button style="padding:8px 18px;border-radius:6px;border:none;background:var(--blue);color:#fff;font-weight:600;cursor:pointer;font-size:13px;" onclick="submitForm()">등록</button>
-        </div>
-    </div>
-</div>
+                render();
+            }
 
-<script>
-// ── 1. Supabase ──────────────────────────────────────────────
-const { createClient } = supabase;
-const db = createClient(
-    'https://ofbtvvzpvuezfdirwhtd.supabase.co',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mYnR2dnpwdnVlemZkaXJ3aHRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMjY1MTYsImV4cCI6MjA5MjYwMjUxNn0.OLCpaSiQxs37dZC3P0QXxOTp4OKRYYApaF34b2UkOlA'
-);
+            function setFilter(type, val, btn) {
+                filters[type] = val;
+                btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active'); render();
+            }
+            function setMode(m, btn) {
+                currentMode = m;
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active'); render();
+            }
+            function resetLocFilter() {
+                filters.loc = null;
+                document.getElementById('resetLoc').style.display = 'none';
+                render();
+            }
 
-// ── 2. 25개구 좌표 ────────────────────────────────────────────
-const DISTRICTS = [
-    {name:"강남구",lat:37.5172,lng:127.0473},{name:"강동구",lat:37.5301,lng:127.1238},
-    {name:"강북구",lat:37.6396,lng:127.0256},{name:"강서구",lat:37.5509,lng:126.8495},
-    {name:"관악구",lat:37.4784,lng:126.9516},{name:"광진구",lat:37.5385,lng:127.0823},
-    {name:"구로구",lat:37.4954,lng:126.8874},{name:"금천구",lat:37.4565,lng:126.8955},
-    {name:"노원구",lat:37.6542,lng:127.0568},{name:"도봉구",lat:37.6688,lng:127.0471},
-    {name:"동대문구",lat:37.5744,lng:127.0395},{name:"동작구",lat:37.5124,lng:126.9393},
-    {name:"마포구",lat:37.5663,lng:126.9019},{name:"서대문구",lat:37.5791,lng:126.9368},
-    {name:"서초구",lat:37.4837,lng:127.0324},{name:"성동구",lat:37.5634,lng:127.0369},
-    {name:"성북구",lat:37.5894,lng:127.0167},{name:"송파구",lat:37.5145,lng:127.1059},
-    {name:"양천구",lat:37.5170,lng:126.8665},{name:"영등포구",lat:37.5264,lng:126.8962},
-    {name:"용산구",lat:37.5311,lng:126.9810},{name:"은평구",lat:37.6027,lng:126.9291},
-    {name:"종로구",lat:37.5730,lng:126.9794},{name:"중구",lat:37.5640,lng:126.9975},
-    {name:"중랑구",lat:37.6063,lng:127.0927}
-];
+            function isDown(i) {
+                // 음수: 기존 폭락앱 하락
+                if (i.drop_amount < 0) return true;
+                // 양수 + trade_price 있음 + 현재가 < 기준가: collect.py 급매
+                if (i.drop_amount > 0 && i.trade_price != null && i.current_price < i.trade_price) return true;
+                return false;
+            }
+            function isUp(i) {
+                // 기존 폭락앱 상승: drop_amount > 0 이고 trade_price 없는 것
+                return i.drop_amount > 0 && (i.trade_price == null || i.trade_price === 0);
+            }
+            function getFilteredData() {
+                let filtered = rawData.filter(i => currentMode === 'up' ? isUp(i) : isDown(i));
+                if (filters.loc) filtered = filtered.filter(i => i.loc_name === filters.loc);
+                if (filters.period > 0) {
+                    const cutoff = new Date();
+                    cutoff.setMonth(cutoff.getMonth() - filters.period);
+                    // listed_at 기준으로 필터
+                    filtered = filtered.filter(i => getDate(i) && new Date(getDate(i)) >= cutoff);
+                }
+                if (filters.price > 0) filtered = filtered.filter(i => Math.abs(i.drop_amount) >= filters.price);
+                return filtered.sort((a, b) => currentMode === 'up' ? b.drop_amount - a.drop_amount : a.drop_amount - b.drop_amount);
+            }
 
-// ── 3. 샘플 데이터 ───────────────────────────────────────────
-const SAMPLE = [
-    {id:1,name:"강남구 역삼동 푸르지오",district:"강남구",type:"아파트",price:155000,real_price:182000,area:84,floor:12,lat:37.5001,lng:127.0366,created_at:"2026-04-30"},
-    {id:2,name:"마포구 아현동 래미안푸르지오",district:"마포구",type:"아파트",price:172000,real_price:175000,area:59,floor:8,lat:37.5546,lng:126.9178,created_at:"2026-04-29"},
-    {id:3,name:"송파구 잠실동 엘스",district:"송파구",type:"아파트",price:195000,real_price:238000,area:84,floor:20,lat:37.5107,lng:127.0837,created_at:"2026-04-28"},
-    {id:4,name:"서초구 반포동 래미안퍼스티지",district:"서초구",type:"아파트",price:320000,real_price:368000,area:115,floor:15,lat:37.5062,lng:126.9966,created_at:"2026-04-27"},
-    {id:5,name:"성동구 옥수동 하이페리온",district:"성동구",type:"아파트",price:112000,real_price:128000,area:59,floor:22,lat:37.5523,lng:127.0175,created_at:"2026-04-26"},
-    {id:6,name:"강서구 염창동 우성아파트",district:"강서구",type:"아파트",price:62000,real_price:74000,area:59,floor:4,lat:37.5518,lng:126.8620,created_at:"2026-04-25"},
-    {id:7,name:"노원구 상계동 주공아파트",district:"노원구",type:"아파트",price:45000,real_price:51000,area:49,floor:7,lat:37.6524,lng:127.0611,created_at:"2026-04-24"},
-    {id:8,name:"영등포구 여의도 시범아파트",district:"영등포구",type:"아파트",price:185000,real_price:201000,area:118,floor:10,lat:37.5237,lng:126.9337,created_at:"2026-04-23"},
-    {id:9,name:"용산구 이촌동 한강대우",district:"용산구",type:"아파트",price:148000,real_price:172000,area:84,floor:6,lat:37.5218,lng:126.9697,created_at:"2026-04-22"},
-    {id:10,name:"광진구 자양동 롯데캐슬",district:"광진구",type:"오피스텔",price:38000,real_price:41000,area:33,floor:18,lat:37.5368,lng:127.0857,created_at:"2026-04-21"},
-];
+            function fmtDate(val) {
+                if (!val) return '-';
+                return String(val).slice(0, 10);
+            }
+            function getDate(row) {
+                return row.listed_at || row.deal_date || null;
+            }
 
-// ── 4. 상태 ──────────────────────────────────────────────────
-let allListings = [], map = null, markers = [];
-let selectedDistrict = null, selectedType = "전체", selectedId = null;
-let currentTab = 'map';
+            function render() {
+                const data = getFilteredData();
+                updateCharts(data);
+                const status = document.getElementById('filter-status');
+                if (filters.loc) { status.style.display = 'block'; status.innerText = `📍 ${filters.loc} 시그널만 표시 중`; }
+                else { status.style.display = 'none'; }
+                document.getElementById('list').innerHTML = data.map(i => `
+                    <tr>
+                        <td style="color:#94a3b8; font-size:0.85rem;">${fmtDate(getDate(i))}</td>
+                        <td>
+                            <div style="font-size:0.75rem; color:#64748b;">${i.loc_name}</div>
+                            <div style="font-weight:bold; font-size:1rem; cursor:pointer;"
+                                 onclick="window.open('https://search.naver.com/search.naver?query=${encodeURIComponent(i.loc_name + ' ' + i.apt_name)}', '_blank')">
+                                ${i.apt_name}
+                            </div>
+                        </td>
+                        <td class="price-tag">${(i.current_price / 10000).toFixed(1)}억</td>
+                        <td class="price-tag ${currentMode === 'up' ? 'rise' : 'drop'}">
+                            ${isDown(i) ? '▼' : '▲'} ${(Math.abs(i.drop_amount) / 10000).toFixed(1)}억
+                        </td>
+                        <td><button class="btn-map"
+                            onclick="window.open('https://map.kakao.com/?q=${encodeURIComponent(i.loc_name + ' ' + i.apt_name)}', '_blank')">MAP</button></td>
+                    </tr>
+                `).join('');
+            }
 
-// ── 5. 탭 전환 ───────────────────────────────────────────────
-function switchTab(tabName) {
-    currentTab = tabName;
-    // 탭 버튼 active 상태
-    document.querySelectorAll('.tab').forEach(t => {
-        t.classList.toggle('active', t.dataset.tab === tabName);
-    });
-    // 패널 표시/숨김
-    document.getElementById('panel-map').style.display   = tabName === 'map'     ? 'contents' : 'none';
-    document.getElementById('panel-list').style.display  = tabName === 'list'    ? 'contents' : 'none';
-    document.getElementById('panel-compare').style.display = tabName === 'compare' ? 'contents' : 'none';
-    const ca = document.getElementById('content-area');
-    if (tabName === 'chart') {
-        ca.style.gridTemplateColumns = '1fr';
-        document.getElementById('panel-chart').style.display = 'block';
-        renderCharts();
-    } else {
-        ca.style.gridTemplateColumns = '1fr 380px';
-        document.getElementById('panel-chart').style.display = 'none';
-    }
+            function downloadExcel() {
+                const data = getFilteredData().map(i => ({
+                    "거래일": fmtDate(getDate(i)),
+                    "지역": i.loc_name,
+                    "단지명": i.apt_name,
+                    "실거래가(억)": (i.current_price / 10000).toFixed(2),
+                    "변동액(억)": (i.drop_amount / 10000).toFixed(2)
+                }));
+                const ws = XLSX.utils.json_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "시그널_리스트");
+                XLSX.writeFile(wb, `부동산_시그널_${currentMode}_${new Date().toISOString().slice(0,10)}.xlsx`);
+            }
 
-    if (tabName === 'list')    renderFullList();
-    if (tabName === 'compare') renderCompare();
-}
+            function updateCharts(data) {
+                const ups = rawData.filter(i => isUp(i)).length;
+                const downs = rawData.filter(i => isDown(i)).length;
+                if (charts.ratio) charts.ratio.destroy();
+                charts.ratio = new Chart(document.getElementById('ratioChart'), {
+                    type: 'doughnut',
+                    data: { labels: ['상승', '하락'], datasets: [{ data: [ups, downs], backgroundColor: ['#ef4444', '#3b82f6'], borderWidth: 0 }] },
+                    options: { cutout: '75%' }
+                });
+                const locCounts = {};
+                rawData.filter(i => currentMode === 'up' ? isUp(i) : isDown(i))
+                       .forEach(i => locCounts[i.loc_name] = (locCounts[i.loc_name] || 0) + 1);
+                if (charts.loc) charts.loc.destroy();
+                charts.loc = new Chart(document.getElementById('locChart'), {
+                    type: 'bar',
+                    data: { labels: Object.keys(locCounts), datasets: [{ label: '시그널 건수', data: Object.values(locCounts), backgroundColor: '#1e293b', borderRadius: 8 }] },
+                    options: {
+                        onClick: (e, el) => {
+                            if (el.length > 0) {
+                                filters.loc = Object.keys(locCounts)[el[0].index];
+                                document.getElementById('resetLoc').style.display = 'inline-block';
+                                render();
+                            }
+                        },
+                        plugins: { legend: { display: false } },
+                        layout: { padding: { bottom: 10 } },
+                        scales: {
+                            x: {
+                                ticks: {
+                                    maxRotation: 60,
+                                    minRotation: 60,
+                                    font: { size: 12, weight: 'bold' },
+                                    autoSkip: false
+                                },
+                                grid: { display: false }
+                            },
+                            y: { beginAtZero: true }
+                        }
+                    }
+                });
+                // 단지명 중복 제거 후 TOP10
+                const seen = new Set();
+                const sorted = [...data]
+                    .sort((a, b) => Math.abs(b.drop_amount) - Math.abs(a.drop_amount))
+                    .filter(i => { if (seen.has(i.apt_name)) return false; seen.add(i.apt_name); return true; })
+                    .slice(0, 10);
+                if (charts.top) charts.top.destroy();
+                charts.top = new Chart(document.getElementById('topChart'), {
+                    type: 'bar',
+                    options: { indexAxis: 'y', plugins: { legend: { display: false } } },
+                    data: {
+                        labels: sorted.map(i => i.apt_name.substring(0, 6)),
+                        datasets: [{ label: '억', data: sorted.map(i => Math.abs(i.drop_amount) / 10000), backgroundColor: '#64748b' }]
+                    }
+                });
 
-document.querySelectorAll('.tab[data-tab]').forEach(btn => {
-    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
-});
+                // 4. 월별 폭락/폭등 추이
+                const monthDown = {}, monthUp = {};
+                rawData.forEach(i => {
+                    const m = fmtDate(i.listed_at).slice(0,7);
+                    if (!m || m === '-') return;
+                    if (isDown(i)) monthDown[m] = (monthDown[m]||0) + 1;
+                    else if (isUp(i)) monthUp[m] = (monthUp[m]||0) + 1;
+                });
+                const allMonths = [...new Set([...Object.keys(monthDown), ...Object.keys(monthUp)])].sort();
+                if (charts.monthly) charts.monthly.destroy();
+                charts.monthly = new Chart(document.getElementById('monthlyChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: allMonths,
+                        datasets: [
+                            { label: '📉 폭락', data: allMonths.map(m => monthDown[m]||0), backgroundColor: '#3b82f6', borderRadius: 4 },
+                            { label: '🔥 폭등', data: allMonths.map(m => monthUp[m]||0), backgroundColor: '#ef4444', borderRadius: 4 }
+                        ]
+                    },
+                    options: { plugins: { legend: { position: 'top' } }, scales: { x: { stacked: false }, y: { beginAtZero: true } } }
+                });
 
-// ── 6. Leaflet 초기화 ─────────────────────────────────────────
-function initMap() {
-    map = L.map('leaflet-map', { center:[37.5665,126.9780], zoom:11 });
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        attribution:'© OpenStreetMap © CARTO',
-        subdomains:'abcd', maxZoom:19
-    }).addTo(map);
-    document.getElementById('map-status-text').textContent = '지도 연결됨 ✓';
-}
+                // 5. 지역별 평균 낙폭률
+                const locRate = {};
+                rawData.filter(i => isDown(i) && i.current_price > 0).forEach(i => {
+                    if (!locRate[i.loc_name]) locRate[i.loc_name] = { sum: 0, cnt: 0 };
+                    locRate[i.loc_name].sum += Math.abs(i.drop_amount) / i.current_price * 100;
+                    locRate[i.loc_name].cnt++;
+                });
+                const locRateLabels = Object.keys(locRate).sort((a,b) => locRate[b].sum/locRate[b].cnt - locRate[a].sum/locRate[a].cnt);
+                const locRateData = locRateLabels.map(k => +(locRate[k].sum/locRate[k].cnt).toFixed(1));
+                if (charts.dropRate) charts.dropRate.destroy();
+                charts.dropRate = new Chart(document.getElementById('dropRateChart'), {
+                    type: 'bar',
+                    data: { labels: locRateLabels, datasets: [{ label: '평균 낙폭률(%)', data: locRateData, backgroundColor: locRateData.map(v => v > 15 ? '#ef4444' : v > 10 ? '#f97316' : '#3b82f6'), borderRadius: 6 }] },
+                    options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
+                });
 
-// ── 7. 마커 ──────────────────────────────────────────────────
-function renderMarkers(listings) {
-    markers.forEach(m => map.removeLayer(m));
-    markers = [];
-    listings.forEach(item => {
-        const gap = item.real_price ? (item.price - item.real_price) / item.real_price * 100 : 0;
-        const cls = gap <= -10 ? 'pm pm-urgent' : 'pm pm-normal';
-        const icon = L.divIcon({
-            className: '',
-            html: `<div class="${cls}">${fmtShort(item.price)}</div>`,
-            iconAnchor: [0, 0]
-        });
-        const m = L.marker([item.lat, item.lng], { icon }).addTo(map);
-        m.on('click', () => selectCard(item.id));
-        markers.push(m);
-    });
-}
-
-// ── 8. 국토부 API ────────────────────────────────────────────
-const MOLIT_KEY = '7b6efd99b84e03fca06677a5f9632db682bac3e47d90f5ec37f3b4947e84307e';
-
-// 서울 25개구 법정동 코드
-const LAWD_CODES = {
-    "강남구":"11680","강동구":"11740","강북구":"11305","강서구":"11500",
-    "관악구":"11620","광진구":"11215","구로구":"11530","금천구":"11545",
-    "노원구":"11350","도봉구":"11320","동대문구":"11230","동작구":"11590",
-    "마포구":"11440","서대문구":"11410","서초구":"11650","성동구":"11200",
-    "성북구":"11290","송파구":"11710","양천구":"11470","영등포구":"11560",
-    "용산구":"11170","은평구":"11380","종로구":"11110","중구":"11140","중랑구":"11260"
-};
-
-function getYearMonth() {
-    const d = new Date();
-    return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}`;
-}
-
-async function fetchMolitDistrict(lawdCd, dealYmd) {
-    const url = `https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev?serviceKey=${MOLIT_KEY}&LAWD_CD=${lawdCd}&DEAL_YMD=${dealYmd}&pageNo=1&numOfRows=10`;
-    try {
-        const res = await fetch(url);
-        const text = await res.text();
-        const parser = new DOMParser();
-        const xml = parser.parseFromString(text, 'text/xml');
-        const items = xml.querySelectorAll('item');
-        const results = [];
-        items.forEach(item => {
-            const get = tag => item.querySelector(tag)?.textContent?.trim() || '';
-            const priceRaw = get('dealAmount').replace(/,/g,'');
-            const price = Math.round(parseInt(priceRaw) * 10); // 만원 단위
-            const area = parseFloat(get('excluUseAr')) || 0;
-            const floor = parseInt(get('floor')) || 1;
-            const aptName = get('aptNm');
-            const dong = get('umdNm');
-            const districtName = Object.keys(LAWD_CODES).find(k => LAWD_CODES[k] === lawdCd) || '';
-            const year = get('dealYear'), month = get('dealMonth'), day = get('dealDay');
-            if (!aptName || !price) return;
-            results.push({
-                id: `${lawdCd}_${aptName}_${year}${month}${day}_${floor}`,
-                name: `${districtName} ${dong} ${aptName}`,
-                district: districtName,
-                type: '아파트',
-                price: price,
-                real_price: price, // 실거래가 = 매물가 (실제 거래된 값)
-                area: Math.round(area),
-                floor: floor,
-                lat: DISTRICTS.find(d=>d.name===districtName)?.lat + (Math.random()-.5)*.015 || 37.5665,
-                lng: DISTRICTS.find(d=>d.name===districtName)?.lng + (Math.random()-.5)*.015 || 126.978,
-                created_at: `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`,
-                source: 'molit'
-            });
-        });
-        return results;
-    } catch(e) {
-        return [];
-    }
-}
-
-async function loadListings() {
-    document.getElementById('map-status-text').textContent = 'DB 로딩 중...';
-    document.getElementById('listing-container').innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-tertiary);font-size:13px;"><div class="spinner"></div> 급매 데이터 불러오는 중...</div>';
-    try {
-        const { data, error } = await db
-            .from('drop_results')
-            .select('id,loc_name,apt_name,current_price,trade_price,drop_score,area,floor_num,listed_at')
-            .order('drop_score', { ascending: false })
-            .limit(500);
-        if (error) throw error;
-        allListings = (data || []).map(r => {
-            const dist = DISTRICTS.find(d => d.name === r.loc_name) || DISTRICTS[0];
-            return {
-                id:         r.id,
-                name:       r.loc_name + ' ' + r.apt_name,
-                district:   r.loc_name,
-                type:       '아파트',
-                price:      r.current_price,
-                real_price: r.trade_price,
-                drop_score: r.drop_score,
-                area:       r.area || 0,
-                floor:      r.floor_num || 0,
-                lat:        dist.lat + (Math.random() - 0.5) * 0.02,
-                lng:        dist.lng + (Math.random() - 0.5) * 0.02,
-                created_at: r.listed_at || '',
-            };
-        });
-        document.getElementById('map-status-text').textContent = `급매 데이터 ${allListings.length}건 로드 ✓`;
-    } catch(e) {
-        console.error(e);
-        allListings = SAMPLE;
-        document.getElementById('map-status-text').textContent = 'DB 실패 → 샘플 데이터';
-    }
-    buildDistrictList();
-    renderAll();
-    updateTimestamp();
-}
-// ── 9. 렌더 ──────────────────────────────────────────────────
-function renderAll() {
-    const filtered = getFiltered();
-    renderListings(getSorted(filtered));
-    renderMarkers(filtered);
-    updateCounts();
-    updateStats(filtered);
-    if (currentTab === 'list')    renderFullList();
-    if (currentTab === 'compare') renderCompare();
-}
-
-function getFiltered() {
-    return allListings.filter(l =>
-        (!selectedDistrict || l.district === selectedDistrict) &&
-        (selectedType === "전체" || l.type === selectedType)
-    );
-}
-
-function getSorted(list) {
-    const s = document.getElementById('sort-select').value;
-    return [...list].sort((a,b) => {
-        if (s==='gap') { const ga=(a.price-a.real_price)/a.real_price||0, gb=(b.price-b.real_price)/b.real_price||0; return ga-gb; }
-        if (s==='price') return a.price-b.price;
-        return new Date(b.created_at)-new Date(a.created_at);
-    });
-}
-
-function renderListings(list) {
-    const el = document.getElementById('listing-container');
-    if (!list.length) { el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-tertiary);font-size:13px;">해당 조건의 매물이 없습니다</div>'; return; }
-    el.innerHTML = list.map(item => {
-        const gap = item.real_price ? Math.round((item.price-item.real_price)/item.real_price*100) : null;
-        const urgent = gap !== null && gap <= -10;
-        const tagSt = urgent ? 'background:#fff5f5;color:#e03131;' : 'background:#f1f3f5;color:#495057;';
-        const sel = item.id===selectedId ? ' selected' : '';
-        return `<div class="listing-card${sel}" id="card-${item.id}" onclick="selectCard(${item.id})">
-            <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;">
-                <b style="font-size:13.5px;line-height:1.4;">${item.name}</b>
-                <span style="font-size:10px;padding:2px 7px;border-radius:4px;font-weight:700;white-space:nowrap;${tagSt}">${urgent?gap+'% 급매':'시세 부합'}</span>
-            </div>
-            <div class="card-price">${fmtKo(item.price)}</div>
-            <div class="card-meta">
-                <span>${item.area}㎡ · ${item.floor}층</span>
-                ${item.real_price?`<span>실거래 ${fmtKo(item.real_price)}</span>`:''}
-                <span>${item.district}</span>
-            </div>
-        </div>`;
-    }).join('');
-}
-
-// ── 전체 리스트 렌더 ─────────────────────────────────────────
-function renderFullList() {
-    const list = getSorted(getFiltered());
-    const tbody = document.getElementById('full-list-body');
-    if (!tbody) return;
-    tbody.innerHTML = list.map(item => {
-        const gap = item.real_price ? Math.round((item.price-item.real_price)/item.real_price*100) : null;
-        const urgent = gap !== null && gap <= -10;
-        return `<tr>
-            <td><b>${item.name}</b></td>
-            <td>${item.district}</td>
-            <td>${item.type}</td>
-            <td>${item.area}㎡</td>
-            <td>${item.floor}층</td>
-            <td style="font-weight:700;">${fmtKo(item.price)}</td>
-            <td>${item.real_price ? fmtKo(item.real_price) : '-'}</td>
-            <td>${gap !== null ? `<span class="${urgent?'badge-urgent':'badge-normal'}">${gap}%</span>` : '-'}</td>
-            <td style="color:var(--text-tertiary);">${item.created_at}</td>
-        </tr>`;
-    }).join('');
-}
-
-// ── 실거래가 비교 렌더 ───────────────────────────────────────
-function renderCompare() {
-    const list = getSorted(getFiltered()).filter(l => l.real_price);
-    const el = document.getElementById('compare-container');
-    if (!el) return;
-    if (!list.length) { el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-tertiary);font-size:13px;">실거래가 데이터가 없습니다</div>'; return; }
-    const maxVal = Math.max(...list.map(l => Math.max(l.price, l.real_price)));
-    el.innerHTML = list.map(item => {
-        const gap = Math.round((item.price - item.real_price) / item.real_price * 100);
-        const pct_price = Math.round(item.price / maxVal * 100);
-        const pct_real  = Math.round(item.real_price / maxVal * 100);
-        const gapCls = gap < 0 ? 'gap-down' : 'gap-up';
-        return `<div class="compare-card">
-            <div class="compare-header">
-                <span class="compare-name">${item.name}</span>
-                <span class="gap-tag ${gapCls}">${gap > 0 ? '+' : ''}${gap}%</span>
-            </div>
-            <div class="compare-bar-wrap">
-                <span class="compare-label">매물가</span>
-                <div class="bar-track"><div class="bar-fill-price" style="width:${pct_price}%"></div></div>
-                <span class="compare-val" style="color:var(--blue);">${fmtKo(item.price)}</span>
-            </div>
-            <div class="compare-bar-wrap">
-                <span class="compare-label">실거래가</span>
-                <div class="bar-track"><div class="bar-fill-real" style="width:${pct_real}%"></div></div>
-                <span class="compare-val" style="color:#868e96;">${fmtKo(item.real_price)}</span>
-            </div>
-        </div>`;
-    }).join('');
-}
-
-function selectCard(id) {
-    selectedId = id;
-    document.querySelectorAll('.listing-card').forEach(c=>c.classList.remove('selected'));
-    const card = document.getElementById('card-'+id);
-    if (card) { card.classList.add('selected'); card.scrollIntoView({behavior:'smooth',block:'nearest'}); }
-    const item = allListings.find(l=>l.id===id);
-    if (item && map) map.flyTo([item.lat,item.lng],14,{duration:0.8});
-}
-
-function updateCounts() {
-    document.getElementById('count-all').textContent = allListings.length;
-    document.getElementById('count-apt').textContent = allListings.filter(l=>l.type==='아파트').length;
-    document.getElementById('count-opi').textContent = allListings.filter(l=>l.type==='오피스텔').length;
-    document.getElementById('count-villa').textContent = allListings.filter(l=>l.type==='빌라'||l.type==='연립').length;
-}
-
-function updateStats(list) {
-    const urg = list.filter(l=>l.real_price&&(l.price-l.real_price)/l.real_price*100<=-10);
-    document.getElementById('stat-urgent').innerHTML = `${urg.length} <span style="font-size:12px;font-weight:400">건</span>`;
-    document.getElementById('stat-urgent-bar').style.width = (list.length?Math.round(urg.length/list.length*100):0)+'%';
-    const gaps = list.filter(l=>l.real_price).map(l=>(l.price-l.real_price)/l.real_price*100);
-    if (gaps.length) {
-        const avg = (gaps.reduce((a,b)=>a+b,0)/gaps.length).toFixed(1);
-        document.getElementById('stat-gap').innerHTML = `${avg} <span style="font-size:12px;font-weight:400">%</span>`;
-        document.getElementById('stat-gap-bar').style.width = Math.min(Math.abs(avg)*3,100)+'%';
-    }
-}
-
-function updateTimestamp() {
-    const n=new Date(), p=x=>String(x).padStart(2,'0');
-    document.getElementById('last-update').textContent = `최종 업데이트: ${n.getFullYear()}.${p(n.getMonth()+1)}.${p(n.getDate())} ${p(n.getHours())}:${p(n.getMinutes())}`;
-}
-
-function fmtKo(v) {
-    const uk=Math.floor(v/10000), man=v%10000, chun=Math.floor(man/1000);
-    return man===0?`${uk}억`:chun>0?`${uk}억 ${chun},000만`:`${uk}억 ${man}만`;
-}
-function fmtShort(v) {
-    const uk=Math.floor(v/10000), chun=Math.round((v%10000)/1000);
-    return chun>0?`${uk}.${chun}억`:`${uk}억`;
-}
-
-function buildDistrictList() {
-    const el = document.getElementById('district-list');
-    el.innerHTML = '';
-    DISTRICTS.forEach(d => {
-        const cnt = allListings.filter(l=>l.district===d.name).length;
-        const div = document.createElement('div');
-        div.className = 'filter-item';
-        div.innerHTML = `${d.name} <span class="filter-count">${cnt||''}</span>`;
-        div.onclick = function() {
-            const isActive = this.classList.contains('active');
-            document.querySelectorAll('#district-list .filter-item').forEach(i=>i.classList.remove('active'));
-            selectedDistrict = isActive ? null : d.name;
-            if (!isActive) { this.classList.add('active'); map.flyTo([d.lat,d.lng],13,{duration:0.8}); }
-            else map.flyTo([37.5665,126.9780],11,{duration:0.8});
-            renderAll();
-        };
-        el.appendChild(div);
-    });
-}
-
-document.querySelectorAll('[data-type]').forEach(el => {
-    el.addEventListener('click', function() {
-        document.querySelectorAll('[data-type]').forEach(i=>i.classList.remove('active'));
-        this.classList.add('active');
-        selectedType = this.dataset.type;
-        renderAll();
-    });
-});
-
-function openModal() { document.getElementById('parse-modal').classList.add('open'); }
-function closeModal() { document.getElementById('parse-modal').classList.remove('open'); }
-
-function addToList(p) {
-    const dist=DISTRICTS.find(d=>d.name===p.district)||DISTRICTS[0];
-    const item={id:Date.now(),name:p.name||'신규 매물',district:p.district||'미분류',type:p.type||'아파트',
-        price:+p.price||0,real_price:p.real_price?+p.real_price:null,area:+p.area||0,floor:+p.floor||0,
-        lat:dist.lat+(Math.random()-.5)*.02,lng:dist.lng+(Math.random()-.5)*.02,
-        created_at:new Date().toISOString().split('T')[0]};
-    allListings.unshift(item);
-    db.from('listings').insert([item]).then(({error})=>error&&console.warn('저장 실패:',error.message));
-    renderAll();
-    closeModal();
-    map.flyTo([item.lat,item.lng],14,{duration:1.2});
-}
-
-
-// ── 차트 인스턴스 ─────────────────────────────────────────
-const charts = {};
-let heatLayer = null, heatmapOn = false;
-
-function renderCharts() {
-    if (!allListings.length) return;
-
-    // 1. 구별 급매 건수 (바차트)
-    const guCount = {};
-    allListings.forEach(l => { guCount[l.district] = (guCount[l.district]||0) + 1; });
-    const guSorted = Object.entries(guCount).sort((a,b)=>b[1]-a[1]);
-    const guLabels = guSorted.map(e=>e[0]);
-    const guData   = guSorted.map(e=>e[1]);
-    renderBar('chart-gu', guLabels, guData, '급매 건수', '#378ADD');
-
-    // 2. 월별 실거래가 추이 (라인차트) — listed_at 기준
-    const monthMap = {};
-    allListings.forEach(l => {
-        const m = (l.created_at||'').slice(0,7);
-        if (!m) return;
-        if (!monthMap[m]) monthMap[m] = {sum:0, cnt:0};
-        monthMap[m].sum += l.price;
-        monthMap[m].cnt++;
-    });
-    const months = Object.keys(monthMap).sort();
-    const monthAvg = months.map(m => Math.round(monthMap[m].sum / monthMap[m].cnt / 10000));
-    renderLine('chart-monthly', months, monthAvg, '평균 거래가(억)', '#E24B4A');
-
-    // 3. 평형별 평균 거래가
-    const areaMap = {};
-    allListings.forEach(l => {
-        if (!l.area) return;
-        const bucket = Math.round(l.area/10)*10 + '㎡';
-        if (!areaMap[bucket]) areaMap[bucket] = {sum:0, cnt:0};
-        areaMap[bucket].sum += l.price;
-        areaMap[bucket].cnt++;
-    });
-    const areaLabels = Object.keys(areaMap).sort((a,b)=>parseInt(a)-parseInt(b));
-    const areaData   = areaLabels.map(k => +(areaMap[k].sum/areaMap[k].cnt/10000).toFixed(1));
-    renderBar('chart-area', areaLabels, areaData, '평균(억)', '#639922');
-
-    // 4. 급매 점수 분포 (도넛)
-    const scoreMap = {1:0, 2:0, 3:0, 4:0, 5:0};
-    allListings.forEach(l => { if(l.drop_score) scoreMap[l.drop_score] = (scoreMap[l.drop_score]||0)+1; });
-    renderDoughnut('chart-score',
-        Object.keys(scoreMap).map(k=>k+'점'),
-        Object.values(scoreMap),
-        ['#f1f3f5','#cfe2ff','#378ADD','#E24B4A','#8B0000']
-    );
-}
-
-function renderBar(id, labels, data, label, color) {
-    const ctx = document.getElementById(id);
-    if (!ctx) return;
-    if (charts[id]) charts[id].destroy();
-    charts[id] = new Chart(ctx, {
-        type: 'bar',
-        data: { labels, datasets: [{ label, data, backgroundColor: color+'99', borderColor: color, borderWidth:1 }] },
-        options: { responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
-    });
-}
-
-function renderLine(id, labels, data, label, color) {
-    const ctx = document.getElementById(id);
-    if (!ctx) return;
-    if (charts[id]) charts[id].destroy();
-    charts[id] = new Chart(ctx, {
-        type: 'line',
-        data: { labels, datasets: [{ label, data, borderColor: color, backgroundColor: color+'22', tension:0.3, fill:true, pointRadius:4 }] },
-        options: { responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:false}} }
-    });
-}
-
-function renderDoughnut(id, labels, data, label, colors) {
-    const ctx = document.getElementById(id);
-    if (!ctx) return;
-    if (charts[id]) charts[id].destroy();
-    charts[id] = new Chart(ctx, {
-        type: 'doughnut',
-        data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth:2 }] },
-        options: { responsive:true, plugins:{legend:{position:'right'}} }
-    });
-}
-
-function toggleHeatmap() {
-    heatmapOn = !heatmapOn;
-    document.getElementById('heatmap-btn').textContent = heatmapOn ? '히트맵 끄기' : '지도 탭에 표시';
-    if (!map) return;
-    if (heatmapOn) {
-        const pts = allListings
-            .filter(l => l.lat && l.lng)
-            .map(l => [l.lat, l.lng, (l.drop_score||1) * 0.3]);
-        heatLayer = L.heatLayer(pts, { radius:25, blur:15, maxZoom:14,
-            gradient:{0.4:'blue', 0.6:'lime', 0.8:'orange', 1.0:'red'} }).addTo(map);
-    } else if (heatLayer) {
-        map.removeLayer(heatLayer);
-        heatLayer = null;
-    }
-    // 지도 탭으로 이동
-    switchTab('map');
-}
-
-// ── 시작 ─────────────────────────────────────────────────────
-initMap();
-loadListings();
-</script>
-</body>
-</html>
+                // 6. 지역별 낙폭 강도 (평균 억)
+                const locAmt = {};
+                rawData.filter(i => isDown(i)).forEach(i => {
+                    if (!locAmt[i.loc_name]) locAmt[i.loc_name] = { sum: 0, cnt: 0 };
+                    locAmt[i.loc_name].sum += Math.abs(i.drop_amount);
+                    locAmt[i.loc_name].cnt++;
+                });
+                const locAmtLabels = Object.keys(locAmt).sort((a,b) => locAmt[b].sum/locAmt[b].cnt - locAmt[a].sum/locAmt[a].cnt);
+                const locAmtData = locAmtLabels.map(k => +(locAmt[k].sum/locAmt[k].cnt/10000).toFixed(1));
+                const maxAmt = Math.max(...locAmtData);
+                if (charts.heat) charts.heat.destroy();
+                charts.heat = new Chart(document.getElementById('heatChart'), {
+                    type: 'bar',
+                    data: { labels: locAmtLabels, datasets: [{ label: '평균 낙폭(억)', data: locAmtData, backgroundColor: locAmtData.map(v => `rgba(239,68,68,${(v/maxAmt*0.8+0.2).toFixed(2)})`), borderRadius: 6 }] },
+                    options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
+                });
+            }
+            init();
+        </script>
+    </body>
+    </html>
