@@ -64,10 +64,10 @@
             </div>
             <div class="chart-grid">
                 <div class="chart-card"><h3>📈 시장 심리</h3><canvas id="ratioChart"></canvas></div>
-                <div class="chart-card">
+                <div class="chart-card" style="grid-column:1/-1;">
                     <h3>📍 지역별 빈도 <span id="resetLoc" class="reset-loc" onclick="resetLocFilter()">해제</span></h3>
-                    <p style="font-size:0.7rem; color:#94a3b8; margin-top:-10px;">*막대를 클릭하면 해당 지역만 필터링됩니다.</p>
-                    <canvas id="locChart"></canvas>
+                    <p style="font-size:0.95rem; color:#475569; margin-top:-10px; font-weight:500;">* 막대를 클릭하면 해당 지역만 필터링됩니다.</p>
+                    <canvas id="locChart" height="60"></canvas>
                 </div>
                 <div class="chart-card"><h3>🏆 변동 TOP 5</h3><canvas id="topChart"></canvas></div>
                 <!-- 추가 지표 행 -->
