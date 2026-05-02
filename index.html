@@ -104,15 +104,23 @@
             let rawData = []; let currentMode = 'down'; let filters = { period: 0, price: 0, loc: null }; let charts = {};
 
             async function init() {
-                // 전체 데이터 로드 (최대 1000건)
-                const { data } = await client
-                    .from('drop_results')
-                    .select('*')
-                    .order('listed_at', { ascending: false })
-                    .limit(1000);
-
+                // 페이지네이션으로 전체 데이터 로드
+                let all = [];
+                let page = 0;
+                const PAGE = 1000;
+                while (true) {
+                    const { data, error } = await client
+                        .from('drop_results')
+                        .select('*')
+                        .order('listed_at', { ascending: false })
+                        .range(page * PAGE, (page + 1) * PAGE - 1);
+                    if (error || !data || data.length === 0) break;
+                    all = all.concat(data);
+                    if (data.length < PAGE) break;
+                    page++;
+                }
                 // drop_amount 없으면 current_price - trade_price로 계산
-                rawData = (data || []).map(r => {
+                rawData = all.map(r => {
                     if (r.drop_amount == null && r.trade_price && r.current_price) {
                         r.drop_amount = r.current_price - r.trade_price;
                     }
