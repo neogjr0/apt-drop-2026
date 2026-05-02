@@ -146,8 +146,19 @@
                 render();
             }
 
+            function isDown(i) {
+                // 음수: 기존 폭락앱 (명백한 하락)
+                // 양수: collect.py (기준가보다 싸게 거래 = 급매/하락)
+                if (i.drop_amount < 0) return true;
+                if (i.drop_amount > 0 && i.trade_price && i.current_price < i.trade_price) return true;
+                return false;
+            }
+            function isUp(i) {
+                // 기존 폭락앱의 상승 데이터만
+                return i.drop_amount > 0 && (!i.trade_price || i.current_price >= i.trade_price);
+            }
             function getFilteredData() {
-                let filtered = rawData.filter(i => currentMode === 'up' ? i.drop_amount > 0 : i.drop_amount < 0);
+                let filtered = rawData.filter(i => currentMode === 'up' ? isUp(i) : isDown(i));
                 if (filters.loc) filtered = filtered.filter(i => i.loc_name === filters.loc);
                 if (filters.period > 0) {
                     const cutoff = new Date();
@@ -185,7 +196,7 @@
                         </td>
                         <td class="price-tag">${(i.current_price / 10000).toFixed(1)}억</td>
                         <td class="price-tag ${currentMode === 'up' ? 'rise' : 'drop'}">
-                            ${currentMode === 'up' ? '▲' : '▼'} ${(Math.abs(i.drop_amount) / 10000).toFixed(1)}억
+                            ${isDown(i) ? '▼' : '▲'} ${(Math.abs(i.drop_amount) / 10000).toFixed(1)}억
                         </td>
                         <td><button class="btn-map"
                             onclick="window.open('https://map.kakao.com/?q=${encodeURIComponent(i.loc_name + ' ' + i.apt_name)}', '_blank')">MAP</button></td>
@@ -208,8 +219,8 @@
             }
 
             function updateCharts(data) {
-                const ups = rawData.filter(i => i.drop_amount > 0).length;
-                const downs = rawData.filter(i => i.drop_amount < 0).length;
+                const ups = rawData.filter(i => isUp(i)).length;
+                const downs = rawData.filter(i => isDown(i)).length;
                 if (charts.ratio) charts.ratio.destroy();
                 charts.ratio = new Chart(document.getElementById('ratioChart'), {
                     type: 'doughnut',
