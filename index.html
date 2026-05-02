@@ -64,10 +64,10 @@
             </div>
             <div class="chart-grid">
                 <div class="chart-card"><h3>📈 시장 심리</h3><canvas id="ratioChart"></canvas></div>
-                <div class="chart-card" style="grid-column:1/-1;">
+                <div class="chart-card" style="grid-column:1/-1; min-height:360px;">
                     <h3>📍 지역별 빈도 <span id="resetLoc" class="reset-loc" onclick="resetLocFilter()">해제</span></h3>
                     <p style="font-size:0.95rem; color:#475569; margin-top:-10px; font-weight:500;">* 막대를 클릭하면 해당 지역만 필터링됩니다.</p>
-                    <canvas id="locChart" height="60"></canvas>
+                    <canvas id="locChart" height="120"></canvas>
                 </div>
                 <div class="chart-card"><h3>🏆 변동 TOP 10</h3><canvas id="topChart"></canvas></div>
                 <!-- 추가 지표 행 -->
@@ -232,14 +232,18 @@
                             }
                         },
                         plugins: { legend: { display: false } },
+                        layout: { padding: { bottom: 10 } },
                         scales: {
                             x: {
                                 ticks: {
-                                    maxRotation: 45,
-                                    minRotation: 45,
-                                    font: { size: 11 }
-                                }
-                            }
+                                    maxRotation: 60,
+                                    minRotation: 60,
+                                    font: { size: 12, weight: 'bold' },
+                                    autoSkip: false
+                                },
+                                grid: { display: false }
+                            },
+                            y: { beginAtZero: true }
                         }
                     }
                 });
