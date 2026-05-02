@@ -147,15 +147,15 @@
             }
 
             function isDown(i) {
-                // 음수: 기존 폭락앱 (명백한 하락)
-                // 양수: collect.py (기준가보다 싸게 거래 = 급매/하락)
+                // 음수: 기존 폭락앱 하락
                 if (i.drop_amount < 0) return true;
-                if (i.drop_amount > 0 && i.trade_price && i.current_price < i.trade_price) return true;
+                // 양수 + trade_price 있음 + 현재가 < 기준가: collect.py 급매
+                if (i.drop_amount > 0 && i.trade_price != null && i.current_price < i.trade_price) return true;
                 return false;
             }
             function isUp(i) {
-                // 기존 폭락앱의 상승 데이터만
-                return i.drop_amount > 0 && (!i.trade_price || i.current_price >= i.trade_price);
+                // 기존 폭락앱 상승: drop_amount > 0 이고 trade_price 없는 것
+                return i.drop_amount > 0 && (i.trade_price == null || i.trade_price === 0);
             }
             function getFilteredData() {
                 let filtered = rawData.filter(i => currentMode === 'up' ? isUp(i) : isDown(i));
