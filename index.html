@@ -53,14 +53,6 @@
                         <button onclick="setFilter('period', 24, this)">2년</button>
                     </div>
                 </div>
-                <div class="filter-group"><label style="display:block; font-size:0.8rem; font-weight:bold; color:#64748b; margin-bottom:10px;">🏠 매물 유형</label>
-                    <div class="btn-group">
-                        <button class="active" onclick="setFilter('propType', null, this)">전체</button>
-                        <button onclick="setFilter('propType', '아파트', this)">아파트</button>
-                        <button onclick="setFilter('propType', '오피스텔', this)">오피스텔</button>
-                        <button onclick="setFilter('propType', '빌라연립', this)">빌라/연립</button>
-                    </div>
-                </div>
                 <div class="filter-group"><label style="display:block; font-size:0.8rem; font-weight:bold; color:#64748b; margin-bottom:10px;">💰 변동 금액</label>
                     <div class="btn-group">
                         <button class="active" onclick="setFilter('price', 0, this)">전체</button>
@@ -99,7 +91,7 @@
                     <button class="tab-btn up" onclick="setMode('up', this)">🔥 상승 시그널</button>
                 </div>
                 <table id="main-table">
-                    <thead><tr><th>거래일</th><th>지역/단지명</th><th>유형</th><th>실거래가</th><th>변동액</th><th>액션</th></tr></thead>
+                    <thead><tr><th>거래일</th><th>지역/단지명</th><th>실거래가</th><th>변동액</th><th>액션</th></tr></thead>
                     <tbody id="list"></tbody>
                 </table>
             </div>
@@ -109,7 +101,7 @@
                 "https://ofbtvvzpvuezfdirwhtd.supabase.co",
                 "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mYnR2dnpwdnVlemZkaXJ3aHRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMjY1MTYsImV4cCI6MjA5MjYwMjUxNn0.OLCpaSiQxs37dZC3P0QXxOTp4OKRYYApaF34b2UkOlA"
             );
-            let rawData = []; let currentMode = 'down'; let filters = { period: 0, price: 0, loc: null, propType: null }; let charts = {};
+            let rawData = []; let currentMode = 'down'; let filters = { period: 0, price: 0, loc: null }; let charts = {};
 
             async function init() {
                 // 페이지네이션으로 전체 데이터 로드
@@ -176,7 +168,6 @@
                     filtered = filtered.filter(i => getDate(i) && new Date(getDate(i)) >= cutoff);
                 }
                 if (filters.price > 0) filtered = filtered.filter(i => Math.abs(i.drop_amount) >= filters.price);
-                if (filters.propType) filtered = filtered.filter(i => (i.property_type || '아파트') === filters.propType);
                 return filtered.sort((a, b) => currentMode === 'up' ? b.drop_amount - a.drop_amount : a.drop_amount - b.drop_amount);
             }
 
@@ -204,7 +195,6 @@
                                 ${i.apt_name}
                             </div>
                         </td>
-                        <td style="font-size:0.8rem; color:#64748b;">${i.property_type || '아파트'}</td>
                         <td class="price-tag">${(i.current_price / 10000).toFixed(1)}억</td>
                         <td class="price-tag ${currentMode === 'up' ? 'rise' : 'drop'}">
                             ${isDown(i) ? '▼' : '▲'} ${(Math.abs(i.drop_amount) / 10000).toFixed(1)}억
