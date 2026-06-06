@@ -44,36 +44,46 @@ def get_year_months(months: int) -> list:
     return result
 
 
+PROPERTY_APIS = {
+    "아파트":     ("https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade",   "aptNm",     "dealAmount"),
+    "오피스텔":   ("https://apis.data.go.kr/1613000/RTMSDataSvcOffiTrade/getRTMSDataSvcOffiTrade", "offiNm",    "dealAmount"),
+    "빌라연립":   ("https://apis.data.go.kr/1613000/RTMSDataSvcRHTrade/getRTMSDataSvcRHTrade",     "mhouseNm",  "dealAmount"),
+}
+
+
 def fetch_molit(gu_name: str, months: int) -> list:
     lawd_cd = LAWD_CODES[gu_name]
     trades = []
-    for ym in get_year_months(months):
-        url = (
-            "https://apis.data.go.kr/1613000/RTMSDataSvcAptTrade/getRTMSDataSvcAptTrade"
-            f"?serviceKey={MOLIT_KEY}&LAWD_CD={lawd_cd}&DEAL_YMD={ym}&pageNo=1&numOfRows=1000"
-        )
-        try:
-            res = requests.get(url, timeout=15)
-            print(f"  [DEBUG] {ym} status={res.status_code} preview={res.text[:200]}")
-            root = ET.fromstring(res.text)
-            for item in root.findall(".//item"):
-                def g(tag): return (item.findtext(tag) or "").strip()
-                price_raw = g("dealAmount").replace(",", "")
-                apt_name  = g("aptNm")
-                if not price_raw or not apt_name:
-                    continue
-                trades.append({
-                    "gu_name":    gu_name,
-                    "dong_name":  g("umdNm"),
-                    "apt_name":   apt_name,
-                    "area":       float(g("excluUseAr") or 0) or None,
-                    "floor_num":  int(g("floor") or 0) or None,
-                    "price":      int(price_raw),
-                    "trade_date": f"{g('dealYear')}-{g('dealMonth').zfill(2)}-{g('dealDay').zfill(2)}",
-                })
-        except Exception as e:
-            print(f"  [국토부] {gu_name} {ym} 오류: {e}")
-        time.sleep(0.15)
+
+    for prop_type, (base_url, name_tag, price_tag) in PROPERTY_APIS.items():
+        for ym in get_year_months(months):
+            url = (
+                f"{base_url}"
+                f"?serviceKey={MOLIT_KEY}&LAWD_CD={lawd_cd}&DEAL_YMD={ym}&pageNo=1&numOfRows=1000"
+            )
+            try:
+                res = requests.get(url, timeout=15)
+                root = ET.fromstring(res.text)
+                for item in root.findall(".//item"):
+                    def g(tag): return (item.findtext(tag) or "").strip()
+                    price_raw = g(price_tag).replace(",", "")
+                    apt_name  = g(name_tag)
+                    if not price_raw or not apt_name:
+                        continue
+                    trades.append({
+                        "gu_name":       gu_name,
+                        "dong_name":     g("umdNm"),
+                        "apt_name":      apt_name,
+                        "property_type": prop_type,
+                        "area":          float(g("excluUseAr") or 0) or None,
+                        "floor_num":     int(g("floor") or 0) or None,
+                        "price":         int(price_raw),
+                        "trade_date":    f"{g('dealYear')}-{g('dealMonth').zfill(2)}-{g('dealDay').zfill(2)}",
+                    })
+            except Exception as e:
+                print(f"  [국토부] {gu_name} {prop_type} {ym} 오류: {e}")
+            time.sleep(0.15)
+
     print(f"  [국토부] {gu_name}: {len(trades)}건")
     return trades
 
@@ -185,6 +195,7 @@ def run(gus: list, months: int):
             records.append({
                 "loc_name":      gu,
                 "apt_name":      t["apt_name"],
+                "property_type": t.get("property_type", "아파트"),
                 "current_price": t["price"],
                 "trade_price":   ref,
                 "drop_amount":   drop_amt,
