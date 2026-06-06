@@ -155,15 +155,15 @@
             }
 
             function isDown(i) {
-                // trade_price 있으면: 현재가 < 기준가 = 하락(급매)
-                if (i.trade_price != null && i.trade_price > 0) return i.current_price < i.trade_price;
-                // trade_price 없으면: 기존 폭락앱 방식 (음수 = 하락)
+                // drop_score 3점 이상 = 급매 (확실한 하락)
+                if (i.drop_score != null) return i.drop_score >= 3;
+                // fallback: trade_price 기준
+                if (i.trade_price != null && i.trade_price > 0) return i.current_price < i.trade_price * 0.95;
                 return i.drop_amount < 0;
             }
             function isUp(i) {
-                // trade_price 있으면: 현재가 > 기준가 = 상승
-                if (i.trade_price != null && i.trade_price > 0) return i.current_price > i.trade_price;
-                // trade_price 없으면: 기존 폭락앱 방식 (양수 = 상승)
+                // 상승: 현재가가 기준가보다 5% 이상 높은 경우
+                if (i.trade_price != null && i.trade_price > 0) return i.current_price > i.trade_price * 1.05;
                 return i.drop_amount > 0;
             }
             function getFilteredData() {
@@ -207,7 +207,8 @@
                         <td style="font-size:0.8rem; color:#64748b;">${i.property_type || '아파트'}</td>
                         <td class="price-tag">${(i.current_price / 10000).toFixed(1)}억</td>
                         <td class="price-tag ${currentMode === 'up' ? 'rise' : 'drop'}">
-                            ${isDown(i) ? '▼' : '▲'} ${(Math.abs(i.drop_amount) / 10000).toFixed(1)}억
+                            ${isDown(i) ? '▼' : '▲'} ${i.trade_price ? ((Math.abs(i.current_price - i.trade_price) / i.trade_price) * 100).toFixed(1) + '%' : (Math.abs(i.drop_amount) / 10000).toFixed(1) + '억'}
+                            <div style="font-size:0.75rem; color:#94a3b8;">${i.trade_price ? (Math.abs(i.current_price - i.trade_price)/10000).toFixed(1)+'억' : ''} ${i.drop_score >= 3 ? '🔴급매' : ''}</div>
                         </td>
                         <td><button class="btn-map"
                             onclick="window.open('https://map.kakao.com/?q=${encodeURIComponent(i.loc_name + ' ' + i.apt_name)}', '_blank')">MAP</button></td>
